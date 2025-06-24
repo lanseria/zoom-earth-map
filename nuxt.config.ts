@@ -14,7 +14,13 @@ export default defineNuxtConfig({
   devtools: {
     enabled: true,
   },
-
+  // 定义运行时配置
+  runtimeConfig: {
+    // public 下的变量会暴露给前端
+    public: {
+      gisServerUrl: process.env.NUXT_PUBLIC_GIS_SERVER_URL || 'http://localhost:8080'
+    }
+  },
   app: {
     head: {
       viewport: 'width=device-width,initial-scale=1',
