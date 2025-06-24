@@ -1,37 +1,53 @@
 <template>
-  <div class="main-layout">
-    <header class="header">
-      <h1>Zoom Earth Satellite Viewer</h1>
+  <div class="flex flex-col h-screen font-sans">
+    <header class="flex-shrink-0 bg-white p-4 border-b border-gray-200 text-center dark:bg-dark-800 dark:border-gray-700">
+      <h1 class="m-0 text-xl">
+        Zoom Earth Satellite Viewer
+      </h1>
     </header>
 
-    <main class="content">
-      <div class="map-wrapper">
-        <!-- 只有在获取到时间戳后才渲染地图 -->
-        <div v-if="timestamps.length > 0" class="map-area">
-          <MapViewer 
-            :selected-timestamp="selectedTimestamp" 
-            :server-url="gisServerUrl" 
+    <main class="flex-grow flex flex-col">
+      <div class="flex-grow relative">
+        <!-- 地图区域 -->
+        <div class="absolute inset-0">
+          <!-- 只有在获取到时间戳后才渲染地图 -->
+          <MapViewer
+            v-if="timestamps.length > 0"
+            :selected-timestamp="selectedTimestamp"
+            :server-url="gisServerUrl"
           />
-        </div>
-        <div v-else class="loading-state">
-          <p>{{ statusMessage }}</p>
+          <div v-else class="flex justify-center items-center h-full text-lg text-gray-500">
+            <p>{{ statusMessage }}</p>
+          </div>
         </div>
       </div>
 
       <!-- 时间轴控制器 -->
-      <div v-if="timestamps.length > 0" class="timeline-controls">
-        <label for="timeline-slider">时间轴 ({{ formattedTimestamp }})</label>
-        <div class="slider-container">
-          <button @click="prevTimestamp" :disabled="isFirstTimestamp"><</button>
+      <div v-if="timestamps.length > 0" class="flex-shrink-0 p-4 bg-white border-t border-gray-200 text-center dark:bg-dark-800 dark:border-gray-700">
+        <label for="timeline-slider" class="block mb-2 font-bold">
+          时间轴 ({{ formattedTimestamp }})
+        </label>
+        <div class="flex items-center justify-center gap-4">
+          <!-- 播放/暂停按钮 -->
+          <button class="icon-btn !text-2xl" @click="togglePlay">
+            <div :class="isPlaying ? 'i-carbon-pause' : 'i-carbon-play'" />
+          </button>
+          
+          <button :disabled="isFirstTimestamp || isPlaying" @click="prevTimestamp">
+            <
+          </button>
           <input
             id="timeline-slider"
+            v-model.number="currentTimestampIndex"
             type="range"
             :min="0"
             :max="timestamps.length - 1"
-            v-model.number="currentTimestampIndex"
-            class="slider"
-          />
-          <button @click="nextTimestamp" :disabled="isLastTimestamp">></button>
+            class="w-7/10 max-w-800px"
+            :disabled="isPlaying"
+          >
+          <button :disabled="isLastTimestamp || isPlaying" @click="nextTimestamp">
+            >
+          </button>
         </div>
       </div>
     </main>
@@ -39,174 +55,107 @@
 </template>
 
 <script setup>
-// GIS 服务器的 URL，最好放在运行时配置中
-const runtimeConfig = useRuntimeConfig();
-const gisServerUrl = runtimeConfig.public.gisServerUrl;
+// GIS 服务器的 URL
+const runtimeConfig = useRuntimeConfig()
+const gisServerUrl = runtimeConfig.public.gisServerUrl
 
 // 状态管理
-const timestamps = ref([]); // 存储从服务器获取的所有时间戳
-const currentTimestampIndex = ref(0); // 当前滑块的索引
-const statusMessage = ref('正在加载时间戳...');
+const timestamps = ref([]) // 存储从服务器获取的所有时间戳
+const currentTimestampIndex = ref(0) // 当前滑块的索引
+const statusMessage = ref('正在加载时间戳...')
+const isPlaying = ref(false) // 播放状态
+let playInterval = null // 定时器实例
 
-// 计算属性，用于获取当前选中的时间戳
+// 计算属性
 const selectedTimestamp = computed(() => {
-  if (timestamps.value.length > 0) {
-    return timestamps.value[currentTimestampIndex.value];
-  }
-  return null;
-});
+  if (timestamps.value.length > 0)
+    return timestamps.value[currentTimestampIndex.value]
+  return null
+})
 
-// 计算属性，用于显示格式化的时间
 const formattedTimestamp = computed(() => {
-  if (selectedTimestamp.value) {
-    return new Date(selectedTimestamp.value * 1000).toLocaleString('zh-CN');
-  }
-  return 'N/A';
-});
+  if (selectedTimestamp.value)
+    return new Date(selectedTimestamp.value * 1000).toLocaleString('zh-CN', { timeZone: 'UTC' }) + ' UTC'
+  return 'N/A'
+})
 
-// 计算属性，判断是否在第一个/最后一个时间戳
-const isFirstTimestamp = computed(() => currentTimestampIndex.value === 0);
-const isLastTimestamp = computed(() => currentTimestampIndex.value === timestamps.value.length - 1);
-
+const isFirstTimestamp = computed(() => currentTimestampIndex.value === 0)
+const isLastTimestamp = computed(() => currentTimestampIndex.value === timestamps.value.length - 1)
 
 // --- 方法 ---
 
 // 获取时间戳列表
 async function fetchTimestamps() {
   try {
-    const response = await fetch(`${gisServerUrl}/himawari/timestamps.json`);
-    if (!response.ok) {
-      throw new Error(`无法获取时间戳列表: ${response.statusText}`);
-    }
-    const data = await response.json();
+    const response = await fetch(`${gisServerUrl}/himawari/timestamps.json`)
+    if (!response.ok)
+      throw new Error(`无法获取时间戳列表: ${response.statusText}`)
+
+    const data = await response.json()
     if (data && data.length > 0) {
-      timestamps.value = data;
+      timestamps.value = data
       // 默认将滑块设置到最新的时间点（数组最后）
-      currentTimestampIndex.value = data.length - 1;
-      statusMessage.value = '';
-    } else {
-      statusMessage.value = '未找到任何有效的时间戳。';
+      currentTimestampIndex.value = data.length - 1
+      statusMessage.value = ''
     }
-  } catch (error) {
-    console.error(error);
-    statusMessage.value = `加载失败：${error.message}。请确保 GIS 服务器正在运行并且允许跨域。`;
+    else {
+      statusMessage.value = '未找到任何有效的时间戳。'
+    }
+  }
+  catch (error) {
+    console.error(error)
+    statusMessage.value = `加载失败：${error.message}。请确保 GIS 服务器正在运行并且允许跨域。`
   }
 }
 
 // 前进/后退按钮的逻辑
 function prevTimestamp() {
-  if (!isFirstTimestamp.value) {
-    currentTimestampIndex.value--;
-  }
+  if (!isFirstTimestamp.value)
+    currentTimestampIndex.value--
 }
 
 function nextTimestamp() {
-  if (!isLastTimestamp.value) {
-    currentTimestampIndex.value++;
+  if (!isLastTimestamp.value)
+    currentTimestampIndex.value++
+}
+
+// 播放/暂停逻辑
+function togglePlay() {
+  isPlaying.value = !isPlaying.value
+
+  if (isPlaying.value) {
+    // 如果已经在了最后一个，从头开始播放
+    if (isLastTimestamp.value)
+      currentTimestampIndex.value = 0
+
+    playInterval = setInterval(() => {
+      if (isLastTimestamp.value) {
+        // 到达末尾，停止播放
+        togglePlay()
+      }
+      else {
+        nextTimestamp()
+      }
+    }, 100) // 800毫秒切换一次，可以根据需要调整
+  }
+  else {
+    if (playInterval)
+      clearInterval(playInterval)
   }
 }
 
 // --- 生命周期钩子 ---
-// 在客户端挂载时获取数据
 onMounted(() => {
-  fetchTimestamps();
-});
+  fetchTimestamps()
+})
+
+onUnmounted(() => {
+  // 组件卸载时清除定时器，防止内存泄漏
+  if (playInterval)
+    clearInterval(playInterval)
+})
 </script>
 
-<style>
-/* 全局样式 */
-body, html {
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f0f2f5;
-  color: #333;
-}
-
-.main-layout {
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-}
-
-.header {
-  background-color: #fff;
-  padding: 1rem;
-  border-bottom: 1px solid #ddd;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 1.5rem;
-}
-
-.content {
-  flex-grow: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.map-wrapper {
-  flex-grow: 1;
-  position: relative; /* 为子元素定位 */
-}
-
-.map-area {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-.loading-state {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
-  font-size: 1.2rem;
-  color: #888;
-}
-
-.timeline-controls {
-  flex-shrink: 0;
-  padding: 1rem;
-  background-color: #fff;
-  border-top: 1px solid #ddd;
-  text-align: center;
-}
-
-.timeline-controls label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: bold;
-}
-
-.slider-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-}
-
-.slider {
-  width: 70%;
-  max-width: 800px;
-}
-
-.slider-container button {
-  padding: 0.5rem 1rem;
-  border: 1px solid #ccc;
-  background-color: #fff;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1rem;
-}
-
-.slider-container button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-</style>
+<!-- 
+  <style> 块已经被完全移除，所有样式均由 UnoCSS 处理 
+-->

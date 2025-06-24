@@ -1,10 +1,10 @@
 <template>
-  <div ref="mapContainer" class="map-container"></div>
+  <div ref="mapContainer" class="map-container" />
 </template>
 
 <script setup>
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibregl from 'maplibre-gl'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 const props = defineProps({
   selectedTimestamp: {
@@ -14,108 +14,119 @@ const props = defineProps({
   serverUrl: {
     type: String,
     required: true,
-  }
-});
+  },
+})
 
-const mapContainer = ref(null);
-let map = null;
-
-const SATELLITE_LAYER_ID = 'satellite-tiles-layer';
-const SATELLITE_SOURCE_ID = 'satellite-tiles-source';
+const mapContainer = ref(null)
+let map = null
+// 用于跟踪上一个图层ID，以便在添加新图层后将其移除
+let previousLayerId = null
 
 onMounted(() => {
-  if (!mapContainer.value) return;
+  if (!mapContainer.value)
+    return
 
   map = new maplibregl.Map({
     container: mapContainer.value,
+    // 使用一个极简的样式，只包含黑色背景
     style: {
       version: 8,
-      sources: {
-        'opentopomap-tiles': {
-          type: 'raster',
-          tiles: ['https://a.tile.opentopomap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution: 'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)',
+      sources: {},
+      layers: [{
+        id: 'background',
+        type: 'background',
+        paint: {
+          'background-color': '#000000',
         },
-      },
-      layers: [
-        {
-          id: 'simple-tiles',
-          type: 'raster',
-          source: 'opentopomap-tiles',
-          minzoom: 0,
-          maxzoom: 22,
-        },
-      ],
+      }],
     },
     center: [135, 35],
-    zoom: 3,
-  });
+    zoom: 2,
+  })
 
   map.on('load', () => {
-    // 初始加载时，添加一次图层
-    addOrUpdateSatelliteLayer(props.selectedTimestamp);
-  });
-});
+    if (props.selectedTimestamp)
+      updateSatelliteLayer(props.selectedTimestamp)
+  })
+})
 
 // 监听 selectedTimestamp 的变化
-watch(() => props.selectedTimestamp, (newTimestamp) => {
-  if (map && map.isStyleLoaded()) {
-    // 当时间戳变化时，调用更新函数
-    addOrUpdateSatelliteLayer(newTimestamp);
-  }
-});
+watch(() => props.selectedTimestamp, (newTimestamp, oldTimestamp) => {
+  // 确保地图已加载且新旧时间戳不同
+  if (map && map.isStyleLoaded() && newTimestamp !== oldTimestamp)
+    updateSatelliteLayer(newTimestamp)
+})
 
-// vvvvvvvvvvvvvv   这是核心的修正逻辑   vvvvvvvvvvvvvv
-function addOrUpdateSatelliteLayer(timestamp) {
-  if (!map || !timestamp) return;
+/**
+ * 更新卫星图层的核心函数，实现平滑过渡
+ * @param {number} timestamp - 新的时间戳
+ */
+function updateSatelliteLayer(timestamp) {
+  if (!map || !timestamp)
+    return
 
-  // 构造包含真实时间戳的 URL
-  const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`;
+  const FADE_DURATION = 500 // 毫秒，控制淡入淡出速度
+  const newSourceId = `satellite-source-${timestamp}`
+  const newLayerId = `satellite-layer-${timestamp}`
+  const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
 
-  // 检查数据源是否已存在
-  const source = map.getSource(SATELLITE_SOURCE_ID);
-
-  if (source) {
-    // 如果已存在，我们先移除旧的图层和数据源
-    // 这是最可靠的更新方式
-    if (map.getLayer(SATELLITE_LAYER_ID)) {
-      map.removeLayer(SATELLITE_LAYER_ID);
-    }
-    map.removeSource(SATELLITE_SOURCE_ID);
-  }
-
-  // 重新添加数据源，这次 URL 里的时间戳是固定的
-  map.addSource(SATELLITE_SOURCE_ID, {
+  // 1. 添加新的数据源
+  map.addSource(newSourceId, {
     type: 'raster',
-    tiles: [tileUrl], // 使用已经包含真实时间戳的 URL
+    tiles: [tileUrl],
     tileSize: 256,
     bounds: [67.5, -60, 180, 60],
-  });
+  })
 
-  // 重新添加图层
+  // 2. 添加新的图层
   map.addLayer({
-    id: SATELLITE_LAYER_ID,
+    id: newLayerId,
     type: 'raster',
-    source: SATELLITE_SOURCE_ID,
+    source: newSourceId,
     paint: {
-      'raster-fade-duration': 150,
-    }
-  });
+      'raster-fade-duration': FADE_DURATION,
+      'raster-opacity': 1, // 直接设置为不透明，由 fade-duration 控制出现动画
+    },
+  })
+
+  // 3. 如果存在上一个图层，在淡入动画开始后，优雅地移除它
+  if (previousLayerId) {
+    const oldLayerId = previousLayerId
+    const oldSourceId = `satellite-source-${oldLayerId.split('-').pop()}`
+
+    // 使用 setTimeout 来延迟移除操作。
+    // 时间稍长于 FADE_DURATION，确保新图层完全加载并显示后再移除旧的。
+    setTimeout(() => {
+      if (map.getLayer(oldLayerId))
+        map.removeLayer(oldLayerId)
+
+      if (map.getSource(oldSourceId))
+        map.removeSource(oldSourceId)
+    }, FADE_DURATION + 100)
+  }
+
+  // 4. 更新 previousLayerId，为下一次切换做准备
+  previousLayerId = newLayerId
 }
-// ^^^^^^^^^^^^^^   核心修正逻辑结束   ^^^^^^^^^^^^^^
 
 onUnmounted(() => {
   if (map) {
-    map.remove();
-    map = null;
+    map.remove()
+    map = null
   }
-});
+})
 </script>
 
 <style scoped>
 .map-container {
   width: 100%;
   height: 100%;
+}
+/* 将MapLibre的logo颜色反转以在黑色背景上可见 */
+:deep(.maplibregl-ctrl-logo) {
+  filter: invert(1) grayscale(1) brightness(1.5);
+}
+:deep(.maplibregl-ctrl-attrib a) {
+  color: #fff; /* 让 attribution 文字也变成白色 */
 }
 </style>
