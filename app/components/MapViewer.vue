@@ -1,7 +1,3 @@
-<template>
-  <div ref="mapContainer" class="map-container" />
-</template>
-
 <script setup>
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -26,7 +22,7 @@ onMounted(() => {
   if (!mapContainer.value)
     return
 
-  map = new maplibregl.Map({
+  map = markRaw(new maplibregl.Map({
     container: mapContainer.value,
     // 使用一个极简的样式，只包含黑色背景
     style: {
@@ -41,8 +37,8 @@ onMounted(() => {
       }],
     },
     center: [135, 35],
-    zoom: 2,
-  })
+    zoom: 5,
+  }))
 
   map.on('load', () => {
     if (props.selectedTimestamp)
@@ -116,6 +112,10 @@ onUnmounted(() => {
   }
 })
 </script>
+
+<template>
+  <div ref="mapContainer" class="map-container" />
+</template>
 
 <style scoped>
 .map-container {
