@@ -1,59 +1,3 @@
-<template>
-  <div class="flex flex-col h-screen font-sans">
-    <header class="flex-shrink-0 bg-white p-4 border-b border-gray-200 text-center dark:bg-dark-800 dark:border-gray-700">
-      <h1 class="m-0 text-xl">
-        Zoom Earth Satellite Viewer
-      </h1>
-    </header>
-
-    <main class="flex-grow flex flex-col">
-      <div class="flex-grow relative">
-        <!-- 地图区域 -->
-        <div class="absolute inset-0">
-          <!-- 只有在获取到时间戳后才渲染地图 -->
-          <MapViewer
-            v-if="timestamps.length > 0"
-            :selected-timestamp="selectedTimestamp"
-            :server-url="gisServerUrl"
-          />
-          <div v-else class="flex justify-center items-center h-full text-lg text-gray-500">
-            <p>{{ statusMessage }}</p>
-          </div>
-        </div>
-      </div>
-
-      <!-- 时间轴控制器 -->
-      <div v-if="timestamps.length > 0" class="flex-shrink-0 p-4 bg-white border-t border-gray-200 text-center dark:bg-dark-800 dark:border-gray-700">
-        <label for="timeline-slider" class="block mb-2 font-bold">
-          时间轴 ({{ formattedTimestamp }})
-        </label>
-        <div class="flex items-center justify-center gap-4">
-          <!-- 播放/暂停按钮 -->
-          <button class="icon-btn !text-2xl" @click="togglePlay">
-            <div :class="isPlaying ? 'i-carbon-pause' : 'i-carbon-play'" />
-          </button>
-          
-          <button :disabled="isFirstTimestamp || isPlaying" @click="prevTimestamp">
-            <
-          </button>
-          <input
-            id="timeline-slider"
-            v-model.number="currentTimestampIndex"
-            type="range"
-            :min="0"
-            :max="timestamps.length - 1"
-            class="w-7/10 max-w-800px"
-            :disabled="isPlaying"
-          >
-          <button :disabled="isLastTimestamp || isPlaying" @click="nextTimestamp">
-            >
-          </button>
-        </div>
-      </div>
-    </main>
-  </div>
-</template>
-
 <script setup>
 // GIS 服务器的 URL
 const runtimeConfig = useRuntimeConfig()
@@ -75,7 +19,7 @@ const selectedTimestamp = computed(() => {
 
 const formattedTimestamp = computed(() => {
   if (selectedTimestamp.value)
-    return new Date(selectedTimestamp.value * 1000).toLocaleString('zh-CN', { timeZone: 'UTC' }) + ' UTC'
+    return `${new Date(selectedTimestamp.value * 1000).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })} UTC+8`
   return 'N/A'
 })
 
@@ -156,6 +100,62 @@ onUnmounted(() => {
 })
 </script>
 
-<!-- 
-  <style> 块已经被完全移除，所有样式均由 UnoCSS 处理 
+<template>
+  <div class="font-sans flex flex-col h-screen">
+    <header class="p-4 text-center border-b border-gray-200 bg-white flex-shrink-0 dark:border-gray-700 dark:bg-dark-800">
+      <h1 class="text-xl m-0">
+        Zoom Earth Satellite Viewer
+      </h1>
+    </header>
+
+    <main class="flex flex-grow flex-col">
+      <div class="flex-grow relative">
+        <!-- 地图区域 -->
+        <div class="inset-0 absolute">
+          <!-- 只有在获取到时间戳后才渲染地图 -->
+          <MapViewer
+            v-if="timestamps.length > 0"
+            :selected-timestamp="selectedTimestamp"
+            :server-url="gisServerUrl"
+          />
+          <div v-else class="text-lg text-gray-500 flex h-full items-center justify-center">
+            <p>{{ statusMessage }}</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 时间轴控制器 -->
+      <div v-if="timestamps.length > 0" class="p-4 text-center border-t border-gray-200 bg-white flex-shrink-0 dark:border-gray-700 dark:bg-dark-800">
+        <label for="timeline-slider" class="font-bold mb-2 block">
+          时间轴 ({{ formattedTimestamp }})
+        </label>
+        <div class="flex gap-4 items-center justify-center">
+          <!-- 播放/暂停按钮 -->
+          <button class="!text-2xl icon-btn" @click="togglePlay">
+            <div :class="isPlaying ? 'i-carbon-pause' : 'i-carbon-play'" />
+          </button>
+
+          <button :disabled="isFirstTimestamp || isPlaying" @click="prevTimestamp">
+            <div class="i-carbon-arrow-left" />
+          </button>
+          <input
+            id="timeline-slider"
+            v-model.number="currentTimestampIndex"
+            type="range"
+            :min="0"
+            :max="timestamps.length - 1"
+            class="max-w-800px w-7/10"
+            :disabled="isPlaying"
+          >
+          <button :disabled="isLastTimestamp || isPlaying" @click="nextTimestamp">
+            <div class="i-carbon-arrow-right" />
+          </button>
+        </div>
+      </div>
+    </main>
+  </div>
+</template>
+
+<!--
+  <style> 块已经被完全移除，所有样式均由 UnoCSS 处理
 -->

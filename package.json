@@ -29,7 +29,7 @@
     "@vueuse/nuxt": "catalog:build",
     "eslint": "catalog:dev",
     "eslint-plugin-format": "catalog:dev",
-    "maplibre-gl": "^5.6.0",
+    "maplibre-gl": "catalog:",
     "nuxt": "catalog:build",
     "pinia": "catalog:frontend",
     "typescript": "catalog:dev",

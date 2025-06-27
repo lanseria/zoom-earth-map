@@ -1,4 +1,4 @@
-import { pwa } from './app/config/pwa'
+import { env } from 'node:process'
 import { appDescription } from './app/constants/index'
 
 export default defineNuxtConfig({
@@ -7,19 +7,11 @@ export default defineNuxtConfig({
     '@unocss/nuxt',
     '@pinia/nuxt',
     '@nuxtjs/color-mode',
-    '@vite-pwa/nuxt',
     '@nuxt/eslint',
   ],
 
   devtools: {
     enabled: true,
-  },
-  // 定义运行时配置
-  runtimeConfig: {
-    // public 下的变量会暴露给前端
-    public: {
-      gisServerUrl: process.env.NUXT_PUBLIC_GIS_SERVER_URL || 'http://localhost:8080'
-    }
   },
   app: {
     head: {
@@ -41,6 +33,13 @@ export default defineNuxtConfig({
 
   colorMode: {
     classSuffix: '',
+  },
+  // 定义运行时配置
+  runtimeConfig: {
+    // public 下的变量会暴露给前端
+    public: {
+      gisServerUrl: env.NUXT_PUBLIC_GIS_SERVER_URL || 'http://localhost:8080',
+    },
   },
 
   future: {
@@ -79,5 +78,4 @@ export default defineNuxtConfig({
     },
   },
 
-  pwa,
 })
