@@ -2,6 +2,8 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
+// 不再需要 runtimeConfig 了
+
 const props = defineProps({
   selectedTimestamp: {
     type: Number,
@@ -15,7 +17,6 @@ const props = defineProps({
 
 const mapContainer = ref(null)
 let map = null
-// 用于跟踪上一个图层ID，以便在添加新图层后将其移除
 let previousLayerId = null
 
 onMounted(() => {
@@ -24,7 +25,6 @@ onMounted(() => {
 
   map = markRaw(new maplibregl.Map({
     container: mapContainer.value,
-    // 使用一个极简的样式，只包含黑色背景
     style: {
       version: 8,
       sources: {},
@@ -41,15 +41,48 @@ onMounted(() => {
   }))
 
   map.on('load', () => {
+    addBoundaryLayer()
+
     if (props.selectedTimestamp)
       updateSatelliteLayer(props.selectedTimestamp)
   })
+
+  map.on('error', (e) => {
+    if (e && e.error)
+      console.error('MapLibre Error:', e.error.message)
+  })
 })
+
+/**
+ * 添加本地 GeoJSON 国界线图层
+ */
+async function addBoundaryLayer() {
+  try {
+    // 1. 添加 GeoJSON 数据源，直接指向 public 目录下的文件
+    map.addSource('local-boundaries-source', {
+      type: 'geojson',
+      data: '/china.json', // URL 指向 public 目录下的文件
+    })
+
+    // 2. 添加图层来绘制边界线
+    map.addLayer({
+      id: 'country-boundaries-layer',
+      type: 'line',
+      source: 'local-boundaries-source',
+      paint: {
+        'line-color': 'rgba(255, 255, 255, 0.7)',
+        'line-width': 1.5,
+      },
+    })
+  }
+  catch (error) {
+    console.error('加载本地 GeoJSON 失败:', error)
+  }
+}
 
 // 监听 selectedTimestamp 的变化
 watch(() => props.selectedTimestamp, (newTimestamp, oldTimestamp) => {
-  // 确保地图已加载且新旧时间戳不同
-  if (map && map.isStyleLoaded() && newTimestamp !== oldTimestamp)
+  if (map && map.isStyleLoaded() && map.getLayer('country-boundaries-layer') && newTimestamp !== oldTimestamp)
     updateSatelliteLayer(newTimestamp)
 })
 
@@ -61,12 +94,14 @@ function updateSatelliteLayer(timestamp) {
   if (!map || !timestamp)
     return
 
-  const FADE_DURATION = 500 // 毫秒，控制淡入淡出速度
+  const FADE_DURATION = 500
   const newSourceId = `satellite-source-${timestamp}`
   const newLayerId = `satellite-layer-${timestamp}`
   const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
 
-  // 1. 添加新的数据源
+  if (map.getSource(newSourceId))
+    return
+
   map.addSource(newSourceId, {
     type: 'raster',
     tiles: [tileUrl],
@@ -74,34 +109,27 @@ function updateSatelliteLayer(timestamp) {
     bounds: [67.5, -60, 180, 60],
   })
 
-  // 2. 添加新的图层
   map.addLayer({
     id: newLayerId,
     type: 'raster',
     source: newSourceId,
     paint: {
       'raster-fade-duration': FADE_DURATION,
-      'raster-opacity': 1, // 直接设置为不透明，由 fade-duration 控制出现动画
+      'raster-opacity': 1,
     },
-  })
+  }, 'country-boundaries-layer')
 
-  // 3. 如果存在上一个图层，在淡入动画开始后，优雅地移除它
   if (previousLayerId) {
     const oldLayerId = previousLayerId
     const oldSourceId = `satellite-source-${oldLayerId.split('-').pop()}`
-
-    // 使用 setTimeout 来延迟移除操作。
-    // 时间稍长于 FADE_DURATION，确保新图层完全加载并显示后再移除旧的。
     setTimeout(() => {
       if (map.getLayer(oldLayerId))
         map.removeLayer(oldLayerId)
-
       if (map.getSource(oldSourceId))
         map.removeSource(oldSourceId)
     }, FADE_DURATION + 100)
   }
 
-  // 4. 更新 previousLayerId，为下一次切换做准备
   previousLayerId = newLayerId
 }
 
