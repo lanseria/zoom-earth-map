@@ -2,8 +2,6 @@
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
-// 不再需要 runtimeConfig 了
-
 const props = defineProps({
   selectedTimestamp: {
     type: Number,
@@ -38,6 +36,8 @@ onMounted(() => {
     },
     center: [135, 35],
     zoom: 5,
+    minZoom: 3,
+    maxZoom: 6,
   }))
 
   map.on('load', () => {
@@ -58,10 +58,10 @@ onMounted(() => {
  */
 async function addBoundaryLayer() {
   try {
-    // 1. 添加 GeoJSON 数据源，直接指向 public 目录下的文件
+    // 1. 添加 GeoJSON 数据源
     map.addSource('local-boundaries-source', {
       type: 'geojson',
-      data: '/china.json', // URL 指向 public 目录下的文件
+      data: 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
     })
 
     // 2. 添加图层来绘制边界线
