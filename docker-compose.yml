@@ -1,0 +1,10 @@
+# docker-compose.yml (简化后)
+services:
+  zoom_earth_map: # 将两个服务合并成一个
+    build: .
+    container_name: zoom_earth_map # 新的容器名
+    env_file:
+      - .env
+    ports:
+      - '19998:3000'
+    restart: unless-stopped
