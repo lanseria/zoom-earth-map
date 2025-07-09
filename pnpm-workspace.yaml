@@ -1,6 +1,8 @@
 packages: []
+
 catalog:
   maplibre-gl: ^5.6.1
+
 catalogs:
   build:
     '@nuxt/devtools': ^2.6.2
@@ -10,12 +12,12 @@ catalogs:
     '@pinia/nuxt': ^0.11.1
     '@unocss/eslint-config': ^66.3.3
     '@unocss/nuxt': ^66.3.3
-    '@vite-pwa/nuxt': ^1.0.3
+    '@vite-pwa/nuxt': ^1.0.4
     '@vueuse/nuxt': ^13.5.0
     nuxt: ^3.17.6
     unocss: ^66.3.3
     unplugin: ^2.3.5
-    vite: ^6.3.5
+    vite: ^7.0.3
   dev:
     '@antfu/eslint-config': ^4.16.2
     eslint: ^9.30.1
@@ -29,6 +31,7 @@ catalogs:
   icons:
     '@iconify-json/carbon': ^1.2.10
     '@iconify-json/twemoji': ^1.2.2
+
 onlyBuiltDependencies:
   - '@parcel/watcher'
   - esbuild

@@ -61,7 +61,7 @@ async function addBoundaryLayer() {
     // 1. 添加 GeoJSON 数据源
     map.addSource('local-boundaries-source', {
       type: 'geojson',
-      data: 'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json',
+      data: '/api/proxy/boundaries.json',
     })
 
     // 2. 添加图层来绘制边界线
