@@ -34,7 +34,7 @@ onMounted(() => {
         },
       }],
     },
-    center: [135, 35],
+    center: [120, 30],
     zoom: 5,
     minZoom: 3,
     maxZoom: 6,
