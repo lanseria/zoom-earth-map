@@ -23,7 +23,7 @@ catalogs:
     eslint: ^9.30.1
     eslint-plugin-format: ^1.0.1
     typescript: ^5.8.3
-    vue-tsc: ^2.2.12
+    vue-tsc: ^3.0.1
   frontend:
     '@vueuse/core': ^13.5.0
     pinia: ^3.0.3
