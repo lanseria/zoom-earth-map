@@ -13,6 +13,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  animationStyle: {
+    type: String, // 'fast' or 'smooth'
+    required: true,
+  },
 })
 
 const mapContainer = ref(null)
@@ -175,64 +179,94 @@ async function addBoundaryLayer() {
   }
 }
 
-// 监听 selectedTimestamp 的变化
+// 监听 selectedTimestamp 的变化, 仅在非播放状态下生效
 watch(() => props.selectedTimestamp, (newTimestamp, oldTimestamp) => {
-  if (map && map.isStyleLoaded() && map.getLayer('country-boundaries-layer') && newTimestamp !== oldTimestamp)
+  // 这个 watch 只处理手动拖动或点击时间轴的情况
+  // 播放时的更新由 store 主动调用
+  if (map && map.isStyleLoaded() && newTimestamp !== oldTimestamp) {
     updateSatelliteLayer(newTimestamp)
+  }
 })
 
 /**
- * 更新卫星图层的核心函数，实现平滑过渡
+ * 更新卫星图层的核心函数，现在返回一个 Promise，在图层加载完成后 resolve
  * @param {number} timestamp - 新的时间戳
+ * @returns {Promise<void>}
  */
-function updateSatelliteLayer(timestamp: any) {
-  if (!map || !timestamp)
-    return
+function updateSatelliteLayer(timestamp: number): Promise<void> {
+  return new Promise((resolve) => {
+    if (!map || !timestamp) {
+      resolve()
+      return
+    }
 
-  const FADE_DURATION = 500
-  const newSourceId = `satellite-source-${timestamp}`
-  const newLayerId = `satellite-layer-${timestamp}`
-  const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
+    const FADE_DURATION = props.animationStyle === 'fast' ? 500 : 0 // 平滑模式预加载时不使用淡入淡出
+    const newSourceId = `satellite-source-${timestamp}`
+    const newLayerId = `satellite-layer-${timestamp}`
+    const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
 
-  if (map.getSource(newSourceId))
-    return
+    if (map.getSource(newSourceId)) {
+      // 如果图层已存在，直接显示它并隐藏旧的
+      if (map.getLayer(newLayerId))
+        map.setPaintProperty(newLayerId, 'raster-opacity', 1)
 
-  map.addSource(newSourceId, {
-    type: 'raster',
-    tiles: [tileUrl],
-    tileSize: 256,
-    bounds: [67.5, -60, 180, 60],
+      if (previousLayerId && previousLayerId !== newLayerId && map.getLayer(previousLayerId))
+        map.setPaintProperty(previousLayerId, 'raster-opacity', 0)
+
+      previousLayerId = newLayerId
+      resolve() // 已存在，立即完成
+      return
+    }
+
+    map.addSource(newSourceId, {
+      type: 'raster',
+      tiles: [tileUrl],
+      tileSize: 256,
+      bounds: [67.5, -60, 180, 60],
+    })
+
+    // 监听新 source 加载完成事件
+    const onSourceData = (e: any) => {
+      if (e.sourceId === newSourceId && e.isSourceLoaded) {
+        map.off('sourcedata', onSourceData)
+        // 在 source 加载完成后，再处理旧图层的移除，确保平滑
+        if (previousLayerId) {
+          const oldLayerId = previousLayerId
+          const oldSourceId = `satellite-source-${oldLayerId.split('-').pop()}`
+          setTimeout(() => {
+            if (map.getLayer(oldLayerId))
+              map.removeLayer(oldLayerId)
+            if (map.getSource(oldSourceId))
+              map.removeSource(oldSourceId)
+          }, FADE_DURATION + 100)
+        }
+        previousLayerId = newLayerId
+        resolve() // 新图层加载并显示完成
+      }
+    }
+    map.on('sourcedata', onSourceData)
+
+    map.addLayer({
+      id: newLayerId,
+      type: 'raster',
+      source: newSourceId,
+      paint: {
+        'raster-fade-duration': FADE_DURATION,
+        'raster-opacity': 1,
+      },
+    }, 'country-boundaries-outline-layer')
   })
-
-  map.addLayer({
-    id: newLayerId,
-    type: 'raster',
-    source: newSourceId,
-    paint: {
-      'raster-fade-duration': FADE_DURATION,
-      'raster-opacity': 1,
-    },
-    // 将卫星图层插入到国界线轮廓的下方，确保国界线和城市点始终可见
-  }, 'country-boundaries-outline-layer')
-
-  if (previousLayerId) {
-    const oldLayerId = previousLayerId
-    const oldSourceId = `satellite-source-${oldLayerId.split('-').pop()}`
-    setTimeout(() => {
-      if (map.getLayer(oldLayerId))
-        map.removeLayer(oldLayerId)
-      if (map.getSource(oldSourceId))
-        map.removeSource(oldSourceId)
-    }, FADE_DURATION + 100)
-  }
-
-  previousLayerId = newLayerId
 }
 
 onUnmounted(() => {
   if (map) {
     map.remove()
   }
+})
+
+// 将方法暴露给父组件
+defineExpose({
+  updateSatelliteLayer,
 })
 </script>
 

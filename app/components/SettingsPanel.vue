@@ -1,0 +1,125 @@
+<script setup lang="ts">
+import type { AnimationDuration, AnimationSpeed, AnimationStyle } from '~/composables/timeline'
+import { useTimelineStore } from '~/composables/timeline'
+
+const timelineStore = useTimelineStore()
+const isPanelOpen = ref(false)
+
+const speedOptions: { label: string, value: AnimationSpeed }[] = [
+  { label: '慢', value: 'slow' },
+  { label: '中等', value: 'medium' },
+  { label: '快速', value: 'fast' },
+]
+
+const durationOptions: { label: string, value: AnimationDuration }[] = [
+  { label: '3h', value: 3 },
+  { label: '6h', value: 6 },
+  { label: '12h', value: 12 },
+  { label: '24h', value: 24 },
+]
+
+const styleOptions: { label: string, value: AnimationStyle, description: string }[] = [
+  { label: '快速', value: 'fast', description: '实时加载，可能会有卡顿' },
+  { label: '平滑', value: 'smooth', description: '预加载资源，播放流畅' },
+]
+</script>
+
+<template>
+  <div class="pointer-events-auto right-4 top-4 absolute">
+    <!-- 设置触发按钮 -->
+    <button
+      class="icon-btn rounded-full bg-dark-800/70 flex h-10 w-10 items-center justify-center backdrop-blur-sm !text-2xl"
+      title="设置"
+      @click="isPanelOpen = !isPanelOpen"
+    >
+      <div :class="isPanelOpen ? 'i-carbon-close' : 'i-carbon-settings'" />
+    </button>
+
+    <!-- 设置面板 -->
+    <Transition
+      enter-from-class="opacity-0 translate-x-4"
+      enter-to-class="opacity-100 translate-x-0"
+      leave-active-class="transition-all duration-200 ease-in"
+      leave-from-class="opacity-100 translate-x-0"
+      leave-to-class="opacity-0 translate-x-4"
+      enter-active-class="transition-all duration-200 ease-out"
+    >
+      <div
+        v-if="isPanelOpen"
+        class="text-white p-4 rounded-lg bg-dark-800/80 w-64 shadow-lg right-12 top-0 absolute backdrop-blur-sm"
+      >
+        <div class="space-y-4">
+          <!-- 动画 Box -->
+          <div>
+            <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
+              动画
+            </h3>
+            <!-- 动画速度 -->
+            <div class="flex items-center justify-between">
+              <label for="animation-speed" class="text-sm">动画速度</label>
+              <div class="p-0.5 rounded-md bg-dark-900/50 flex items-center">
+                <button
+                  v-for="opt in speedOptions"
+                  :key="opt.value"
+                  class="text-sm px-3 py-1 rounded transition-colors duration-200"
+                  :class="{ 'bg-teal-600 text-white': timelineStore.animationSpeed === opt.value, 'hover:bg-gray-600/50': timelineStore.animationSpeed !== opt.value }"
+                  @click="timelineStore.animationSpeed = opt.value"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 动画时长 -->
+            <div class="mt-3 flex items-center justify-between">
+              <label for="animation-duration" class="text-sm">动画时长</label>
+              <div class="p-0.5 rounded-md bg-dark-900/50 flex items-center">
+                <button
+                  v-for="opt in durationOptions"
+                  :key="opt.value"
+                  class="text-sm px-2.5 py-1 rounded transition-colors duration-200"
+                  :class="{ 'bg-teal-600 text-white': timelineStore.animationDuration === opt.value, 'hover:bg-gray-600/50': timelineStore.animationDuration !== opt.value }"
+                  @click="timelineStore.animationDuration = opt.value"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 动画风格 -->
+            <div class="mt-3 flex items-center justify-between">
+              <label for="animation-style" class="text-sm">动画风格</label>
+              <div class="p-0.5 rounded-md bg-dark-900/50 flex items-center">
+                <button
+                  v-for="opt in styleOptions"
+                  :key="opt.value"
+                  class="text-sm px-3 py-1 rounded transition-colors duration-200"
+                  :class="{ 'bg-teal-600 text-white': timelineStore.animationStyle === opt.value, 'hover:bg-gray-600/50': timelineStore.animationStyle !== opt.value }"
+                  :title="opt.description"
+                  @click="timelineStore.animationStyle = opt.value"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 循环播放 -->
+            <div class="mt-3 flex items-center justify-between">
+              <label for="loop-playback" class="text-sm">循环播放</label>
+              <button
+                class="p-1 rounded-full h-6 w-12 transition-colors duration-300"
+                :class="timelineStore.loopPlayback ? 'bg-teal-600' : 'bg-gray-600'"
+                @click="timelineStore.loopPlayback = !timelineStore.loopPlayback"
+              >
+                <span
+                  class="rounded-full bg-white h-4 w-4 block shadow transform transition-transform duration-300"
+                  :class="{ 'translate-x-6': timelineStore.loopPlayback }"
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+  </div>
+</template>

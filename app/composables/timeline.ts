@@ -1,12 +1,23 @@
 // app/composables/timeline.ts
 
+import type MapViewer from '~/components/MapViewer.vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
+
+export type AnimationSpeed = 'slow' | 'medium' | 'fast'
+export type AnimationDuration = 3 | 6 | 12 | 24
+export type AnimationStyle = 'fast' | 'smooth'
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
   const timestamps = ref<number[]>([])
   const currentTimestampIndex = ref(0)
   const isPlaying = ref(false)
+  const animationSpeed = ref<AnimationSpeed>('medium') // 动画速度
+  const animationDuration = ref<AnimationDuration>(6) // 动画回溯时长 (小时)
+  const loopPlayback = ref(true) // 是否循环播放
+  const animationStyle = ref<AnimationStyle>('fast') // 动画风格
+  const isPreloading = ref(false)
+  const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
   const statusMessage = ref('正在加载时间戳...')
 
   let playInterval: NodeJS.Timeout | null = null
@@ -16,6 +27,20 @@ export const useTimelineStore = defineStore('timeline', () => {
     if (timestamps.value.length > 0)
       return timestamps.value[currentTimestampIndex.value]
     return null
+  })
+
+  // 根据速度设置返回具体的播放间隔(毫秒)
+  const playbackIntervalMs = computed(() => {
+    switch (animationSpeed.value) {
+      case 'slow': return 200
+      case 'medium': return 100
+      case 'fast': return 50
+    }
+  })
+
+  // 根据时长设置返回具体的回溯秒数
+  const playbackDurationSeconds = computed(() => {
+    return animationDuration.value * 60 * 60
   })
 
   const formattedDate = computed(() => {
@@ -183,38 +208,92 @@ export const useTimelineStore = defineStore('timeline', () => {
     if (!isLastTimestamp.value)
       currentTimestampIndex.value = timestamps.value.length - 1
   }
-
-  function togglePlay() {
-    isPlaying.value = !isPlaying.value
-
+  /**
+   * 播放逻辑重构
+   */
+  async function togglePlay() {
     if (isPlaying.value) {
-      // 如果当前在最后一个时间点，则从6小时前回退；否则从当前点回退
-      const baseTimestamp = selectedTimestamp.value
-      if (baseTimestamp) {
-        // 计算6小时前的时间戳
-        const SIX_HOURS_IN_SECONDS = 6 * 60 * 60
-        const targetTimestamp = baseTimestamp - SIX_HOURS_IN_SECONDS
-
-        // 找到最接近的时间点索引
-        const startIndex = findClosestTimestampIndex(targetTimestamp)
-
-        // 如果找到了有效索引，则设置为播放起点
-        if (startIndex !== -1)
-          currentTimestampIndex.value = startIndex
+      // --- 停止播放 ---
+      isPlaying.value = false
+      isPreloading.value = false
+      if (playInterval) {
+        clearInterval(playInterval)
+        playInterval = null
       }
+      return
+    }
 
-      playInterval = setInterval(() => {
-        if (isLastTimestamp.value) {
-          togglePlay() // 到达末尾，自动停止播放
+    // --- 开始播放 ---
+    isPlaying.value = true
+
+    const baseTimestamp = selectedTimestamp.value
+    if (!baseTimestamp)
+      return
+
+    const targetTimestamp = baseTimestamp - playbackDurationSeconds.value
+    const startIndex = findClosestTimestampIndex(targetTimestamp)
+    if (startIndex === -1)
+      return
+
+    const endIndex = timestamps.value.length - 1
+    const timestampsToPlay = timestamps.value.slice(startIndex, endIndex + 1)
+
+    // 定义一个可复用的播放函数
+    const playLoop = () => {
+      // 检查是否已停止
+      if (!isPlaying.value)
+        return
+
+      currentTimestampIndex.value++
+
+      if (currentTimestampIndex.value > endIndex) {
+        if (loopPlayback.value) {
+          currentTimestampIndex.value = startIndex
+          playInterval = setTimeout(playLoop, 500)
         }
         else {
-          nextTimestamp()
+          togglePlay() // 播放结束
         }
-      }, 100)
+      }
+      else {
+        playInterval = setTimeout(playLoop, playbackIntervalMs.value)
+      }
+    }
+
+    // --- 根据动画风格选择播放模式 ---
+    if (animationStyle.value === 'smooth' && !isPreloading.value) {
+      // --- 平滑模式的首次预加载播放 ---
+      isPreloading.value = true
+      statusMessage.value = '首次播放：正在逐帧缓存动画...'
+
+      for (let i = 0; i < timestampsToPlay.length; i++) {
+        // 如果在预加载过程中用户点击了暂停
+        if (!isPlaying.value) {
+          isPreloading.value = false
+          statusMessage.value = ''
+          return
+        }
+        const ts = timestampsToPlay[i]!
+        currentTimestampIndex.value = startIndex + i
+        // 等待这一帧的图层加载完成
+        await mapViewerInstance.value?.updateSatelliteLayer(ts)
+      }
+
+      isPreloading.value = false
+      statusMessage.value = ''
+      // 预加载完成后，如果是循环播放，则无缝衔接到常规播放
+      if (loopPlayback.value) {
+        currentTimestampIndex.value = startIndex
+        playInterval = setTimeout(playLoop, 500)
+      }
+      else {
+        togglePlay() // 播放完成
+      }
     }
     else {
-      if (playInterval)
-        clearInterval(playInterval)
+      // --- 快速模式 或 平滑模式的后续播放 ---
+      currentTimestampIndex.value = startIndex
+      playLoop()
     }
   }
 
@@ -223,6 +302,10 @@ export const useTimelineStore = defineStore('timeline', () => {
     if (playInterval)
       clearInterval(playInterval)
   }
+  // 新增：设置地图组件实例
+  function setMapViewerInstance(instance: InstanceType<typeof MapViewer> | null) {
+    mapViewerInstance.value = instance
+  }
 
   return {
     // State
@@ -230,6 +313,11 @@ export const useTimelineStore = defineStore('timeline', () => {
     currentTimestampIndex,
     isPlaying,
     statusMessage,
+    animationSpeed,
+    animationDuration,
+    loopPlayback,
+    animationStyle,
+    isPreloading,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -247,6 +335,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     goToLatest,
     togglePlay,
     cleanup,
+    setMapViewerInstance,
   }
 })
 
