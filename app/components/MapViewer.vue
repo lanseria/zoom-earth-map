@@ -1,6 +1,6 @@
 // app/components/MapViewer.vue
 
-<script setup>
+<script setup lang="ts">
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
@@ -16,8 +16,8 @@ const props = defineProps({
 })
 
 const mapContainer = ref(null)
-let map = null
-let previousLayerId = null
+let map: maplibregl.Map
+let previousLayerId: any = null
 
 onMounted(() => {
   if (!mapContainer.value)
@@ -69,12 +69,12 @@ async function addCityMarkersLayer() {
     const citiesData = await response.json()
 
     // 1. 过滤数据，让城市显示更稀疏
-    const filteredCities = citiesData.filter(item => item.area === '')
+    const filteredCities = citiesData.filter((item: any) => item.area === '')
 
     // 2. 将过滤后的数据转换为 GeoJSON
-    const geojsonData = {
+    const geojsonData: any = {
       type: 'FeatureCollection',
-      features: filteredCities.map((city) => {
+      features: filteredCities.map((city: any) => {
         let name = ''
         if (city.city === '市辖区') {
           name = city.province
@@ -108,7 +108,7 @@ async function addCityMarkersLayer() {
       paint: {
         'circle-radius': 2,
         'circle-color': '#ffffff', // 白色填充
-        'circle-stroke-width': 1, // 描边宽度
+        'circle-stroke-width': 0.8, // 描边宽度
         'circle-stroke-color': '#000000', // 黑色描边
       },
     })
@@ -121,14 +121,14 @@ async function addCityMarkersLayer() {
       layout: {
         'text-field': ['get', 'name'],
         'text-size': 12,
-        'text-offset': [0, 0.8], // 稍微调整偏移，让文字更贴近点
-        'text-anchor': 'bottom', // 锚点在底部，文字在点上方
+        'text-offset': [0, -1.8], // 稍微调整偏移，让文字更贴近点
+        'text-anchor': 'top', // 锚点在底部，文字在点上方
         'icon-allow-overlap': true,
       },
       paint: {
         'text-color': '#ffffff',
         'text-halo-color': '#000000',
-        'text-halo-width': 1,
+        'text-halo-width': 0.9,
       },
     })
   }
@@ -154,7 +154,7 @@ async function addBoundaryLayer() {
       source: 'local-boundaries-source',
       paint: {
         'line-color': '#000000',
-        'line-width': 3.5,
+        'line-width': 3,
         'line-opacity': 0.8,
       },
     })
@@ -166,7 +166,7 @@ async function addBoundaryLayer() {
       source: 'local-boundaries-source',
       paint: {
         'line-color': '#ffffff',
-        'line-width': 1.5,
+        'line-width': 1,
       },
     })
   }
@@ -185,7 +185,7 @@ watch(() => props.selectedTimestamp, (newTimestamp, oldTimestamp) => {
  * 更新卫星图层的核心函数，实现平滑过渡
  * @param {number} timestamp - 新的时间戳
  */
-function updateSatelliteLayer(timestamp) {
+function updateSatelliteLayer(timestamp: any) {
   if (!map || !timestamp)
     return
 
@@ -232,7 +232,6 @@ function updateSatelliteLayer(timestamp) {
 onUnmounted(() => {
   if (map) {
     map.remove()
-    map = null
   }
 })
 </script>
