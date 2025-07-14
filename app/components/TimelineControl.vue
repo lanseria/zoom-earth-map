@@ -9,7 +9,7 @@ const timelineStore = useTimelineStore()
 
 <template>
   <div
-    class="text-white p-3 rounded-lg bg-dark-800/70 flex gap-4 pointer-events-auto shadow-lg items-center bottom-8 left-1/2 justify-center absolute backdrop-blur-sm -translate-x-1/2"
+    class="text-white p-3 rounded-lg bg-dark-800/70 flex gap-4 pointer-events-auto shadow-lg items-center bottom-8 left-1/2 justify-center absolute backdrop-blur-1 -translate-x-1/2"
   >
     <!-- 播放/暂停按钮 -->
     <button

@@ -1,5 +1,3 @@
-// app/components/MapViewer.vue
-
 <script setup lang="ts">
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -50,7 +48,8 @@ onMounted(() => {
 
   map.on('load', () => {
     addBoundaryLayer()
-    addCityMarkersLayer()
+    // 使用新的城市标记图层函数
+    addCityMarkersLayerWithZoomLevels()
 
     if (props.selectedTimestamp)
       updateSatelliteLayer(props.selectedTimestamp)
@@ -63,40 +62,29 @@ onMounted(() => {
 })
 
 /**
- * 添加城市标记图层 (已优化)
+ * 新的城市标记图层函数，实现分级显示
  */
-async function addCityMarkersLayer() {
+async function addCityMarkersLayerWithZoomLevels() {
   try {
-    const response = await fetch('/data.json')
+    const response = await fetch('/new_data.json') // 加载新数据
     if (!response.ok)
       throw new Error(`HTTP error! status: ${response.status}`)
     const citiesData = await response.json()
 
-    // 1. 过滤数据，让城市显示更稀疏
-    const filteredCities = citiesData.filter((item: any) => item.area === '')
-
-    // 2. 将过滤后的数据转换为 GeoJSON
+    // 1. 将数据转换为 GeoJSON 格式
     const geojsonData: any = {
       type: 'FeatureCollection',
-      features: filteredCities.map((city: any) => {
-        let name = ''
-        if (city.city === '市辖区') {
-          name = city.province
-        }
-        else {
-          name = city.city
-        }
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [Number.parseFloat(city.lng), Number.parseFloat(city.lat)],
-          },
-          properties: {
-            name,
-          },
-        }
-      }),
+      features: citiesData.map((city: any) => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [city.lng, city.lat],
+        },
+        properties: {
+          name: city.name,
+          level: city.level, // 关键字段：城市级别
+        },
+      })),
     }
 
     map.addSource('cities-source', {
@@ -104,29 +92,67 @@ async function addCityMarkersLayer() {
       data: geojsonData,
     })
 
-    // 3. 绘制城市圆点 (白底黑边)
+    // 2. 添加省会和直辖市图层 (level 1)，在 zoom >= 3 时显示
     map.addLayer({
-      id: 'cities-points-layer',
+      id: 'capitals-points',
       type: 'circle',
       source: 'cities-source',
+      minzoom: 3, // 从 zoom 3 开始显示
+      filter: ['==', 'level', 1], // 筛选 level 为 1 的城市
       paint: {
-        'circle-radius': 2,
-        'circle-color': '#ffffff', // 白色填充
-        'circle-stroke-width': 0.8, // 描边宽度
-        'circle-stroke-color': '#000000', // 黑色描边
+        'circle-radius': 3,
+        'circle-color': '#ffffff',
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#000000',
       },
     })
 
-    // 4. 显示城市名称
     map.addLayer({
-      id: 'cities-labels-layer',
+      id: 'capitals-labels',
       type: 'symbol',
       source: 'cities-source',
+      minzoom: 3,
+      filter: ['==', 'level', 1],
+      layout: {
+        'text-field': ['get', 'name'],
+        'text-size': 13,
+        'text-offset': [0, -1.8],
+        'text-anchor': 'top',
+        'icon-allow-overlap': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+        'text-halo-color': '#000000',
+        'text-halo-width': 1,
+      },
+    })
+
+    // 3. 添加其他主要城市图层 (level 2)，在 zoom >= 5 时显示
+    map.addLayer({
+      id: 'other-cities-points',
+      type: 'circle',
+      source: 'cities-source',
+      minzoom: 5, // 从 zoom 5 开始显示
+      filter: ['==', 'level', 2], // 筛选 level 为 2 的城市
+      paint: {
+        'circle-radius': 2.5,
+        'circle-color': '#ffffff',
+        'circle-stroke-width': 0.8,
+        'circle-stroke-color': '#000000',
+      },
+    })
+
+    map.addLayer({
+      id: 'other-cities-labels',
+      type: 'symbol',
+      source: 'cities-source',
+      minzoom: 5,
+      filter: ['==', 'level', 2],
       layout: {
         'text-field': ['get', 'name'],
         'text-size': 12,
-        'text-offset': [0, -1.8], // 稍微调整偏移，让文字更贴近点
-        'text-anchor': 'top', // 锚点在底部，文字在点上方
+        'text-offset': [0, -1.8],
+        'text-anchor': 'top',
         'icon-allow-overlap': true,
       },
       paint: {
