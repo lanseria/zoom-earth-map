@@ -35,7 +35,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // public 下的变量会暴露给前端
     public: {
-      gisServerUrl: env.NUXT_PUBLIC_GIS_SERVER_URL || 'http://localhost:8080',
+      gisServerUrl: '',
     },
   },
 
