@@ -26,24 +26,24 @@ onUnmounted(() => {
 
 <template>
   <div class="font-sans h-screen w-screen relative">
-    <!-- 地图容器，直接从 store 获取数据 -->
+    <!-- 地图容器 -->
     <MapViewer
-      v-if="timelineStore.timestamps.length > 0"
+      v-if="timelineStore.timestamps[timelineStore.activeSatellite]?.length > 0"
       ref="mapViewerRef"
       :selected-timestamp="timelineStore.selectedTimestamp"
       :server-url="gisServerUrl"
       :animation-style="timelineStore.animationStyle"
+      :active-satellite="timelineStore.activeSatellite"
     />
     <!-- 加载状态，也从 store 获取 -->
     <div v-else class="text-lg text-gray-400 bg-dark-900 flex h-full w-full items-center justify-center">
       <p>{{ timelineStore.statusMessage }}</p>
     </div>
     <!-- UI 覆盖层，增加一个加载动画的提示 -->
-    <div v-if="timelineStore.timestamps.length > 0" class="pointer-events-none inset-0 absolute">
+    <div v-if="timelineStore.timestamps[timelineStore.activeSatellite]?.length > 0" class="pointer-events-none inset-0 absolute">
       <MapHeader />
       <TimelineControl />
       <SettingsPanel />
-      <!-- 平滑动画加载指示器 -->
       <!-- 平滑动画加载指示器 (Toast 样式) -->
       <Transition
         enter-from-class="opacity-0 -translate-y-full"

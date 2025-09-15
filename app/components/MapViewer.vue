@@ -1,4 +1,6 @@
 <script setup lang="ts">
+// --- 新增: 导入类型 ---
+import type { SatelliteSource } from '~/composables/timeline'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
@@ -13,6 +15,11 @@ const props = defineProps({
   },
   animationStyle: {
     type: String, // 'fast' or 'smooth'
+    required: true,
+  },
+  // --- 新增: activeSatellite prop ---
+  activeSatellite: {
+    type: String as PropType<SatelliteSource>,
     required: true,
   },
 })
@@ -226,10 +233,37 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
       return
     }
 
-    const FADE_DURATION = props.animationStyle === 'fast' ? 500 : 0 // 平滑模式预加载时不使用淡入淡出
+    const FADE_DURATION = props.animationStyle === 'fast' ? 500 : 0
     const newSourceId = `satellite-source-${timestamp}`
     const newLayerId = `satellite-layer-${timestamp}`
-    const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
+
+    // --- 修改: 根据卫星源动态构建瓦片URL和数据源选项 ---
+    let tileUrl: string
+    let sourceOptions: maplibregl.RasterSourceSpecification
+
+    if (props.activeSatellite === 'fy4b') {
+      // 风云4B 的配置
+      tileUrl = `${props.serverUrl}/fy-4b/${timestamp}/{z}/{x}/{y}.png`
+      sourceOptions = {
+        type: 'raster',
+        tiles: [tileUrl],
+        tileSize: 256,
+        scheme: 'tms', // <-- 关键修复：指定TMS坐标系
+        // 从 Leaflet 的 fitBounds 推断出的边界 [west, south, east, north]
+        bounds: [60.0, -55.006, 150.0, 55.0],
+      }
+    }
+    else {
+      // 默认使用 Himawari 的配置
+      tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
+      sourceOptions = {
+        type: 'raster',
+        tiles: [tileUrl],
+        tileSize: 256,
+        bounds: [67.5, -60, 180, 60],
+        // scheme 默认为 'xyz'，无需指定
+      }
+    }
 
     if (map.getSource(newSourceId)) {
       // 如果图层已存在，直接显示它并隐藏旧的
@@ -244,12 +278,8 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
       return
     }
 
-    map.addSource(newSourceId, {
-      type: 'raster',
-      tiles: [tileUrl],
-      tileSize: 256,
-      bounds: [67.5, -60, 180, 60],
-    })
+    // --- 修改: 使用上面构建的 sourceOptions ---
+    map.addSource(newSourceId, sourceOptions)
 
     // 监听新 source 加载完成事件
     const onSourceData = (e: any) => {

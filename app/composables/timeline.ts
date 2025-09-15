@@ -3,13 +3,22 @@
 import type MapViewer from '~/components/MapViewer.vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 
+// --- 新增类型定义 ---
+export type SatelliteSource = 'himawari' | 'fy4b'
+
 export type AnimationSpeed = 'slow' | 'medium' | 'fast'
 export type AnimationDuration = 3 | 6 | 12 | 24
 export type AnimationStyle = 'fast' | 'smooth'
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
-  const timestamps = ref<number[]>([])
+  // --- 修改: activeSatellite 用于追踪当前卫星源 ---
+  const activeSatellite = ref<SatelliteSource>('himawari')
+  // --- 修改: timestamps 现在是一个对象，存储每个源的时间戳 ---
+  const timestamps = ref<Record<SatelliteSource, number[]>>({
+    himawari: [],
+    fy4b: [],
+  })
   const currentTimestampIndex = ref(0)
   const isPlaying = ref(false)
   const animationSpeed = ref<AnimationSpeed>('medium') // 动画速度
@@ -23,9 +32,12 @@ export const useTimelineStore = defineStore('timeline', () => {
   let playInterval: NodeJS.Timeout | null = null
 
   // --- GETTERS (COMPUTED) ---
+  // --- 修改: 所有计算属性现在都依赖于 activeSatellite ---
+  const currentTimestamps = computed(() => timestamps.value[activeSatellite.value] || [])
+
   const selectedTimestamp = computed(() => {
-    if (timestamps.value.length > 0)
-      return timestamps.value[currentTimestampIndex.value]
+    if (currentTimestamps.value.length > 0)
+      return currentTimestamps.value[currentTimestampIndex.value]
     return null
   })
 
@@ -65,7 +77,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   })
 
   const isFirstTimestamp = computed(() => currentTimestampIndex.value === 0)
-  const isLastTimestamp = computed(() => currentTimestampIndex.value === timestamps.value.length - 1)
+  const isLastTimestamp = computed(() => currentTimestampIndex.value === currentTimestamps.value.length - 1)
 
   /**
    * 检查是否存在比当前日期更晚的时间戳
@@ -77,7 +89,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     currentDate.setHours(23, 59, 59, 999) // 设置为当天的最后一毫秒
     const endOfDayTimestamp = Math.floor(currentDate.getTime() / 1000)
     // 检查时间戳数组中是否存在比当天结束时间更晚的时间戳
-    return timestamps.value.some(ts => ts > endOfDayTimestamp)
+    return currentTimestamps.value.some(ts => ts > endOfDayTimestamp)
   })
 
   /**
@@ -90,21 +102,29 @@ export const useTimelineStore = defineStore('timeline', () => {
     currentDate.setHours(0, 0, 0, 0) // 设置为当天的第一毫秒
     const startOfDayTimestamp = Math.floor(currentDate.getTime() / 1000)
     // 检查时间戳数组中是否存在比当天开始时间更早的时间戳
-    return timestamps.value.some(ts => ts < startOfDayTimestamp)
+    return currentTimestamps.value.some(ts => ts < startOfDayTimestamp)
   })
 
   // --- ACTIONS ---
+  // --- 修改: fetchTimestamps 现在会获取所有源的时间戳 ---
   async function fetchTimestamps() {
-    // 获取运行时配置
     const runtimeConfig = useRuntimeConfig()
     const gisServerUrl = runtimeConfig.public.gisServerUrl
 
     try {
-      const response = await $fetch<number[]>(`${gisServerUrl}/himawari/timestamps.json`)
-      if (response && response.length > 0) {
-        timestamps.value = response
-        // 默认定位到最新
-        currentTimestampIndex.value = response.length - 1
+      const [himawariResponse, fy4bResponse] = await Promise.all([
+        $fetch<number[]>(`${gisServerUrl}/himawari/timestamps.json`).catch((e) => {
+          console.error('加载 Himawari 时间戳失败:', e); return []
+        }),
+        $fetch<number[]>(`${gisServerUrl}/fy-4b/timestamps.json`).catch((e) => {
+          console.error('加载 风云4B 时间戳失败:', e); return []
+        }),
+      ])
+
+      timestamps.value.himawari = himawariResponse
+      timestamps.value.fy4b = fy4bResponse
+      if (currentTimestamps.value.length > 0) {
+        currentTimestampIndex.value = currentTimestamps.value.length - 1
         statusMessage.value = ''
       }
       else {
@@ -118,11 +138,11 @@ export const useTimelineStore = defineStore('timeline', () => {
   }
 
   /**
-   * 在给定的时间戳数组中找到最接近目标时间戳的那个，并返回其在 **全局** timestamps 数组中的索引
+   * 在给定的时间戳数组中找到最接近目标时间戳的那个，并返回其在 **当前激活卫星** timestamps 数组中的索引
    * @param targetTimestamp 目标时间戳
-   * @param searchScope 要在哪个范围里搜索，默认为全部
+   * @param searchScope 要在哪个范围里搜索，默认为当前激活的卫星源
    */
-  function findClosestTimestampIndex(targetTimestamp: number, searchScope: number[] = timestamps.value): number {
+  function findClosestTimestampIndex(targetTimestamp: number, searchScope: number[] = currentTimestamps.value): number {
     if (!searchScope.length)
       return -1
 
@@ -130,12 +150,11 @@ export const useTimelineStore = defineStore('timeline', () => {
       return (Math.abs(curr - targetTimestamp) < Math.abs(prev - targetTimestamp) ? curr : prev)
     })
 
-    return timestamps.value.indexOf(closestTs)
+    return currentTimestamps.value.indexOf(closestTs)
   }
 
-  /**
-   * 跳转到下一天的大致相同时间
-   */
+  // --- 接下来的所有 Actions 都需要使用 currentTimestamps.value 而不是 timestamps.value ---
+
   function nextDay() {
     if (!selectedTimestamp.value)
       return
@@ -145,8 +164,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     targetDate.setDate(targetDate.getDate() + 1)
     const targetTimestamp = Math.floor(targetDate.getTime() / 1000)
 
-    // 筛选出属于目标日期的所有时间戳
-    const timestampsOnNextDay = timestamps.value.filter((ts) => {
+    const timestampsOnNextDay = currentTimestamps.value.filter((ts) => {
       const d = new Date(ts * 1000)
       return d.getFullYear() === targetDate.getFullYear()
         && d.getMonth() === targetDate.getMonth()
@@ -154,20 +172,15 @@ export const useTimelineStore = defineStore('timeline', () => {
     })
 
     if (timestampsOnNextDay.length > 0) {
-      // 在当天的范围内查找最接近的时间点
       const newIndex = findClosestTimestampIndex(targetTimestamp, timestampsOnNextDay)
       if (newIndex !== -1)
         currentTimestampIndex.value = newIndex
     }
     else {
-      // 如果下一天没有数据，则跳转到最新
       goToLatest()
     }
   }
 
-  /**
-   * 跳转到上一天的大致相同时间
-   */
   function prevDay() {
     if (!selectedTimestamp.value)
       return
@@ -177,8 +190,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     targetDate.setDate(targetDate.getDate() - 1)
     const targetTimestamp = Math.floor(targetDate.getTime() / 1000)
 
-    // 筛选出属于目标日期的所有时间戳
-    const timestampsOnPrevDay = timestamps.value.filter((ts) => {
+    const timestampsOnPrevDay = currentTimestamps.value.filter((ts) => {
       const d = new Date(ts * 1000)
       return d.getFullYear() === targetDate.getFullYear()
         && d.getMonth() === targetDate.getMonth()
@@ -186,12 +198,10 @@ export const useTimelineStore = defineStore('timeline', () => {
     })
 
     if (timestampsOnPrevDay.length > 0) {
-      // 在当天的范围内查找最接近的时间点
       const newIndex = findClosestTimestampIndex(targetTimestamp, timestampsOnPrevDay)
       if (newIndex !== -1)
         currentTimestampIndex.value = newIndex
     }
-    // 如果上一天没有数据，则什么都不做（因为按钮会被禁用）
   }
 
   function nextTimestamp() {
@@ -206,14 +216,11 @@ export const useTimelineStore = defineStore('timeline', () => {
 
   function goToLatest() {
     if (!isLastTimestamp.value)
-      currentTimestampIndex.value = timestamps.value.length - 1
+      currentTimestampIndex.value = currentTimestamps.value.length - 1
   }
-  /**
-   * 播放逻辑重构
-   */
+
   async function togglePlay() {
     if (isPlaying.value) {
-      // --- 停止播放 ---
       isPlaying.value = false
       isPreloading.value = false
       if (playInterval) {
@@ -223,9 +230,7 @@ export const useTimelineStore = defineStore('timeline', () => {
       return
     }
 
-    // --- 开始播放 ---
     isPlaying.value = true
-
     const baseTimestamp = selectedTimestamp.value
     if (!baseTimestamp)
       return
@@ -235,24 +240,21 @@ export const useTimelineStore = defineStore('timeline', () => {
     if (startIndex === -1)
       return
 
-    const endIndex = timestamps.value.length - 1
-    const timestampsToPlay = timestamps.value.slice(startIndex, endIndex + 1)
+    const endIndex = currentTimestamps.value.length - 1
+    const timestampsToPlay = currentTimestamps.value.slice(startIndex, endIndex + 1)
 
-    // 定义一个可复用的播放函数
+    // ... 内部的 playLoop 逻辑不需要改变，因为它依赖于闭包中的 startIndex 和 endIndex ...
     const playLoop = () => {
-      // 检查是否已停止
       if (!isPlaying.value)
         return
-
       currentTimestampIndex.value++
-
       if (currentTimestampIndex.value > endIndex) {
         if (loopPlayback.value) {
           currentTimestampIndex.value = startIndex
           playInterval = setTimeout(playLoop, 500)
         }
         else {
-          togglePlay() // 播放结束
+          togglePlay()
         }
       }
       else {
@@ -260,14 +262,10 @@ export const useTimelineStore = defineStore('timeline', () => {
       }
     }
 
-    // --- 根据动画风格选择播放模式 ---
     if (animationStyle.value === 'smooth' && !isPreloading.value) {
-      // --- 平滑模式的首次预加载播放 ---
       isPreloading.value = true
       statusMessage.value = '首次播放：正在逐帧缓存动画...'
-
       for (let i = 0; i < timestampsToPlay.length; i++) {
-        // 如果在预加载过程中用户点击了暂停
         if (!isPlaying.value) {
           isPreloading.value = false
           statusMessage.value = ''
@@ -275,40 +273,57 @@ export const useTimelineStore = defineStore('timeline', () => {
         }
         const ts = timestampsToPlay[i]!
         currentTimestampIndex.value = startIndex + i
-        // 等待这一帧的图层加载完成
         await mapViewerInstance.value?.updateSatelliteLayer(ts)
       }
-
       isPreloading.value = false
       statusMessage.value = ''
-      // 预加载完成后，如果是循环播放，则无缝衔接到常规播放
       if (loopPlayback.value) {
         currentTimestampIndex.value = startIndex
         playInterval = setTimeout(playLoop, 500)
       }
       else {
-        togglePlay() // 播放完成
+        togglePlay()
       }
     }
     else {
-      // --- 快速模式 或 平滑模式的后续播放 ---
       currentTimestampIndex.value = startIndex
       playLoop()
     }
   }
 
-  // 清理定时器，防止内存泄漏
   function cleanup() {
     if (playInterval)
       clearInterval(playInterval)
   }
-  // 新增：设置地图组件实例
+
   function setMapViewerInstance(instance: InstanceType<typeof MapViewer> | null) {
     mapViewerInstance.value = instance
   }
 
+  // --- 新增: 切换卫星源的 Action ---
+  function setActiveSatellite(source: SatelliteSource) {
+    if (activeSatellite.value === source)
+      return
+
+    // 停止当前播放
+    if (isPlaying.value)
+      togglePlay()
+
+    activeSatellite.value = source
+
+    // 重置到新数据源的最新时间戳
+    if (currentTimestamps.value.length > 0) {
+      currentTimestampIndex.value = currentTimestamps.value.length - 1
+    }
+    else {
+      currentTimestampIndex.value = 0
+      statusMessage.value = `卫星源 [${source}] 无可用数据。`
+    }
+  }
+
   return {
     // State
+    activeSatellite, // 导出
     timestamps,
     currentTimestampIndex,
     isPlaying,
@@ -336,6 +351,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     togglePlay,
     cleanup,
     setMapViewerInstance,
+    setActiveSatellite, // 导出
   }
 })
 
