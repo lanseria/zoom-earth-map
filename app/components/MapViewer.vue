@@ -237,36 +237,20 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     const newSourceId = `satellite-source-${timestamp}`
     const newLayerId = `satellite-layer-${timestamp}`
 
-    // --- 修改: 根据卫星源动态构建瓦片URL和数据源选项 ---
+    // --- 修改: 动态构建 tileUrl ---
     let tileUrl: string
-    let sourceOptions: maplibregl.RasterSourceSpecification
-
     if (props.activeSatellite === 'fy4b') {
-      // 风云4B 的配置
+      // 风云4B 的 URL 格式
       tileUrl = `${props.serverUrl}/fy-4b/${timestamp}/{z}/{x}/{y}.png`
-      sourceOptions = {
-        type: 'raster',
-        tiles: [tileUrl],
-        tileSize: 256,
-        scheme: 'tms', // <-- 关键修复：指定TMS坐标系
-        // 从 Leaflet 的 fitBounds 推断出的边界 [west, south, east, north]
-        bounds: [60.0, -55.006, 150.0, 55.0],
-      }
     }
     else {
-      // 默认使用 Himawari 的配置
+      // 默认使用 Himawari 的 URL 格式
       tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
-      sourceOptions = {
-        type: 'raster',
-        tiles: [tileUrl],
-        tileSize: 256,
-        bounds: [67.5, -60, 180, 60],
-        // scheme 默认为 'xyz'，无需指定
-      }
     }
 
+    // ... 后续逻辑保持不变 ...
+
     if (map.getSource(newSourceId)) {
-      // 如果图层已存在，直接显示它并隐藏旧的
       if (map.getLayer(newLayerId))
         map.setPaintProperty(newLayerId, 'raster-opacity', 1)
 
@@ -274,18 +258,20 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
         map.setPaintProperty(previousLayerId, 'raster-opacity', 0)
 
       previousLayerId = newLayerId
-      resolve() // 已存在，立即完成
+      resolve()
       return
     }
 
-    // --- 修改: 使用上面构建的 sourceOptions ---
-    map.addSource(newSourceId, sourceOptions)
+    map.addSource(newSourceId, {
+      type: 'raster',
+      tiles: [tileUrl],
+      tileSize: 256,
+      bounds: [67.5, -60, 180, 60], // 注意: 此处bounds可能需要为FY-4B调整,暂时复用
+    })
 
-    // 监听新 source 加载完成事件
     const onSourceData = (e: any) => {
       if (e.sourceId === newSourceId && e.isSourceLoaded) {
         map.off('sourcedata', onSourceData)
-        // 在 source 加载完成后，再处理旧图层的移除，确保平滑
         if (previousLayerId) {
           const oldLayerId = previousLayerId
           const oldSourceId = `satellite-source-${oldLayerId.split('-').pop()}`
@@ -297,7 +283,7 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
           }, FADE_DURATION + 100)
         }
         previousLayerId = newLayerId
-        resolve() // 新图层加载并显示完成
+        resolve()
       }
     }
     map.on('sourcedata', onSourceData)
