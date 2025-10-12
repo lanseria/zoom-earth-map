@@ -43,14 +43,14 @@ onMounted(() => {
         id: 'background',
         type: 'background',
         paint: {
-          'background-color': '#000000',
+          'background-color': '#333333',
         },
       }],
     },
     center: [120, 30],
     zoom: 5,
     minZoom: 3,
-    maxZoom: 6,
+    maxZoom: 8,
   }))
 
   map.on('load', () => {
@@ -110,7 +110,7 @@ async function addCityMarkersLayerWithZoomLevels() {
         'circle-radius': 3,
         'circle-color': '#ffffff',
         'circle-stroke-width': 1,
-        'circle-stroke-color': '#000000',
+        'circle-stroke-color': '#333333',
       },
     })
 
@@ -126,10 +126,11 @@ async function addCityMarkersLayerWithZoomLevels() {
         'text-offset': [0, -1.8],
         'text-anchor': 'top',
         'icon-allow-overlap': true,
+        'text-font': ['Noto Sans Bold'],
       },
       paint: {
         'text-color': '#ffffff',
-        'text-halo-color': '#000000',
+        'text-halo-color': '#333333',
         'text-halo-width': 1,
       },
     })
@@ -145,7 +146,7 @@ async function addCityMarkersLayerWithZoomLevels() {
         'circle-radius': 2.5,
         'circle-color': '#ffffff',
         'circle-stroke-width': 0.8,
-        'circle-stroke-color': '#000000',
+        'circle-stroke-color': '#333333',
       },
     })
 
@@ -161,10 +162,11 @@ async function addCityMarkersLayerWithZoomLevels() {
         'text-offset': [0, -1.8],
         'text-anchor': 'top',
         'icon-allow-overlap': true,
+        'text-font': ['DIN Pro Bold'],
       },
       paint: {
         'text-color': '#ffffff',
-        'text-halo-color': '#000000',
+        'text-halo-color': '#333333',
         'text-halo-width': 0.9,
       },
     })
@@ -190,7 +192,7 @@ async function addBoundaryLayer() {
       type: 'line',
       source: 'local-boundaries-source',
       paint: {
-        'line-color': '#000000',
+        'line-color': '#333333',
         'line-width': 3,
         'line-opacity': 0.8,
       },
@@ -266,7 +268,8 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
       type: 'raster',
       tiles: [tileUrl],
       tileSize: 256,
-      bounds: [67.5, -60, 180, 60], // 注意: 此处bounds可能需要为FY-4B调整,暂时复用
+      bounds: [67.5, -60, 180, 60],
+      maxzoom: 7,
     })
 
     const onSourceData = (e: any) => {
