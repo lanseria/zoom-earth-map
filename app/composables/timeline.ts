@@ -3,8 +3,10 @@
 import type MapViewer from '~/components/MapViewer.vue'
 import { acceptHMRUpdate, defineStore } from 'pinia'
 
-// --- 新增类型定义 ---
+// --- 类型定义 ---
 export type SatelliteSource = 'himawari' | 'fy4b'
+// --- 地图投影类型 ---
+export type MapProjection = 'mercator' | 'globe'
 
 export type AnimationSpeed = 'slow' | 'medium' | 'fast'
 export type AnimationDuration = 3 | 6 | 12 | 24
@@ -25,6 +27,8 @@ export const useTimelineStore = defineStore('timeline', () => {
   const animationDuration = ref<AnimationDuration>(6) // 动画回溯时长 (小时)
   const loopPlayback = ref(true) // 是否循环播放
   const animationStyle = ref<AnimationStyle>('fast') // 动画风格
+  // --- 地图投影状态，默认为平面 ---
+  const mapProjection = ref<MapProjection>('mercator')
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
   const statusMessage = ref('正在加载时间戳...')
@@ -243,7 +247,6 @@ export const useTimelineStore = defineStore('timeline', () => {
     const endIndex = currentTimestamps.value.length - 1
     const timestampsToPlay = currentTimestamps.value.slice(startIndex, endIndex + 1)
 
-    // ... 内部的 playLoop 逻辑不需要改变，因为它依赖于闭包中的 startIndex 和 endIndex ...
     const playLoop = () => {
       if (!isPlaying.value)
         return
@@ -290,6 +293,10 @@ export const useTimelineStore = defineStore('timeline', () => {
       playLoop()
     }
   }
+  // --- 切换地图投影的 Action ---
+  function setMapProjection(projection: MapProjection) {
+    mapProjection.value = projection
+  }
 
   function cleanup() {
     if (playInterval)
@@ -300,7 +307,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     mapViewerInstance.value = instance
   }
 
-  // --- 新增: 切换卫星源的 Action ---
+  // --- 切换卫星源的 Action ---
   function setActiveSatellite(source: SatelliteSource) {
     if (activeSatellite.value === source)
       return
@@ -323,7 +330,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 
   return {
     // State
-    activeSatellite, // 导出
+    activeSatellite,
     timestamps,
     currentTimestampIndex,
     isPlaying,
@@ -333,6 +340,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     loopPlayback,
     animationStyle,
     isPreloading,
+    mapProjection,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -351,7 +359,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     togglePlay,
     cleanup,
     setMapViewerInstance,
-    setActiveSatellite, // 导出
+    setActiveSatellite,
+    setMapProjection,
   }
 })
 

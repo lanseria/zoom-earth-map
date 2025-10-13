@@ -27,6 +27,10 @@ const satelliteOptions: { label: string, value: SatelliteSource }[] = [
   { label: 'Himawari', value: 'himawari' },
   { label: '风云4B', value: 'fy4b' },
 ]
+const projectionOptions: { label: string, value: MapProjection }[] = [
+  { label: '平面', value: 'mercator' },
+  { label: '地球', value: 'globe' },
+]
 </script>
 
 <template>
@@ -66,6 +70,23 @@ const satelliteOptions: { label: string, value: SatelliteSource }[] = [
                 class="text-sm px-3 py-1 rounded flex-1 transition-colors duration-200"
                 :class="{ 'bg-teal-600 text-white': timelineStore.activeSatellite === opt.value, 'hover:bg-gray-600/50': timelineStore.activeSatellite !== opt.value }"
                 @click="timelineStore.setActiveSatellite(opt.value)"
+              >
+                {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <!-- --- 视图模式 Box --- -->
+          <div>
+            <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
+              视图模式
+            </h3>
+            <div class="p-0.5 rounded-md bg-dark-900/50 flex items-center">
+              <button
+                v-for="opt in projectionOptions"
+                :key="opt.value"
+                class="text-sm px-3 py-1 rounded flex-1 transition-colors duration-200"
+                :class="{ 'bg-teal-600 text-white': timelineStore.mapProjection === opt.value, 'hover:bg-gray-600/50': timelineStore.mapProjection !== opt.value }"
+                @click="timelineStore.setMapProjection(opt.value)"
               >
                 {{ opt.label }}
               </button>

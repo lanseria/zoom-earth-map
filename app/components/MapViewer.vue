@@ -1,7 +1,7 @@
 <script setup lang="ts">
-// --- 新增: 导入类型 ---
 import type { SatelliteSource } from '~/composables/timeline'
 import maplibregl from 'maplibre-gl'
+import { useTimelineStore } from '~/composables/timeline'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 const props = defineProps({
@@ -24,6 +24,7 @@ const props = defineProps({
   },
 })
 
+const timelineStore = useTimelineStore()
 const mapContainer = ref(null)
 let map: maplibregl.Map
 let previousLayerId: any = null
@@ -250,8 +251,6 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
       tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
     }
 
-    // ... 后续逻辑保持不变 ...
-
     if (map.getSource(newSourceId)) {
       if (map.getLayer(newLayerId))
         map.setPaintProperty(newLayerId, 'raster-opacity', 1)
@@ -302,6 +301,16 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     }, 'country-boundaries-outline-layer')
   })
 }
+// --- 监听地图投影模式的变化 ---
+watch(() => timelineStore.mapProjection, (newProjection) => {
+  if (!map)
+    return
+
+  // 设置新的投影
+  map.setProjection({
+    type: newProjection,
+  })
+})
 
 onUnmounted(() => {
   if (map) {
