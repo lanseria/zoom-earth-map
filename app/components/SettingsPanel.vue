@@ -68,7 +68,7 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
                 v-for="opt in satelliteOptions"
                 :key="opt.value"
                 class="text-sm px-3 py-1 rounded flex-1 transition-colors duration-200"
-                :class="{ 'bg-teal-600 text-white': timelineStore.activeSatellite === opt.value, 'hover:bg-gray-600/50': timelineStore.activeSatellite !== opt.value }"
+                :class="{ 'bg-sky-600 text-white': timelineStore.activeSatellite === opt.value, 'hover:bg-gray-600/50': timelineStore.activeSatellite !== opt.value }"
                 @click="timelineStore.setActiveSatellite(opt.value)"
               >
                 {{ opt.label }}
@@ -85,7 +85,7 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
                 v-for="opt in projectionOptions"
                 :key="opt.value"
                 class="text-sm px-3 py-1 rounded flex-1 transition-colors duration-200"
-                :class="{ 'bg-teal-600 text-white': timelineStore.mapProjection === opt.value, 'hover:bg-gray-600/50': timelineStore.mapProjection !== opt.value }"
+                :class="{ 'bg-sky-600 text-white': timelineStore.mapProjection === opt.value, 'hover:bg-gray-600/50': timelineStore.mapProjection !== opt.value }"
                 @click="timelineStore.setMapProjection(opt.value)"
               >
                 {{ opt.label }}
@@ -105,7 +105,7 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
                   v-for="opt in speedOptions"
                   :key="opt.value"
                   class="text-sm px-3 py-1 rounded transition-colors duration-200"
-                  :class="{ 'bg-teal-600 text-white': timelineStore.animationSpeed === opt.value, 'hover:bg-gray-600/50': timelineStore.animationSpeed !== opt.value }"
+                  :class="{ 'bg-sky-600 text-white': timelineStore.animationSpeed === opt.value, 'hover:bg-gray-600/50': timelineStore.animationSpeed !== opt.value }"
                   @click="timelineStore.animationSpeed = opt.value"
                 >
                   {{ opt.label }}
@@ -121,7 +121,7 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
                   v-for="opt in durationOptions"
                   :key="opt.value"
                   class="text-sm px-2.5 py-1 rounded transition-colors duration-200"
-                  :class="{ 'bg-teal-600 text-white': timelineStore.animationDuration === opt.value, 'hover:bg-gray-600/50': timelineStore.animationDuration !== opt.value }"
+                  :class="{ 'bg-sky-600 text-white': timelineStore.animationDuration === opt.value, 'hover:bg-gray-600/50': timelineStore.animationDuration !== opt.value }"
                   @click="timelineStore.animationDuration = opt.value"
                 >
                   {{ opt.label }}
@@ -137,7 +137,7 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
                   v-for="opt in styleOptions"
                   :key="opt.value"
                   class="text-sm px-3 py-1 rounded transition-colors duration-200"
-                  :class="{ 'bg-teal-600 text-white': timelineStore.animationStyle === opt.value, 'hover:bg-gray-600/50': timelineStore.animationStyle !== opt.value }"
+                  :class="{ 'bg-sky-600 text-white': timelineStore.animationStyle === opt.value, 'hover:bg-gray-600/50': timelineStore.animationStyle !== opt.value }"
                   :title="opt.description"
                   @click="timelineStore.animationStyle = opt.value"
                 >
@@ -151,7 +151,7 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
               <label for="loop-playback" class="text-sm">循环播放</label>
               <button
                 class="p-1 rounded-full h-6 w-12 transition-colors duration-300"
-                :class="timelineStore.loopPlayback ? 'bg-teal-600' : 'bg-gray-600'"
+                :class="timelineStore.loopPlayback ? 'bg-sky-600' : 'bg-gray-600'"
                 @click="timelineStore.loopPlayback = !timelineStore.loopPlayback"
               >
                 <span

@@ -53,6 +53,7 @@ onMounted(() => {
     minZoom: 3,
     maxZoom: 8,
     attributionControl: false,
+    hash: true,
   }))
 
   map.on('load', () => {
@@ -91,7 +92,7 @@ async function addCityMarkersLayerWithZoomLevels() {
         },
         properties: {
           name: city.name,
-          level: city.level, // 关键字段：城市级别
+          level: city.level,
         },
       })),
     }
@@ -196,7 +197,7 @@ async function addBoundaryLayer() {
       paint: {
         'line-color': '#333333',
         'line-width': 3,
-        'line-opacity': 0.8,
+        'line-opacity': 0.6,
       },
     })
 
@@ -208,6 +209,7 @@ async function addBoundaryLayer() {
       paint: {
         'line-color': '#ffffff',
         'line-width': 1,
+        'line-opacity': 0.8,
       },
     })
   }
