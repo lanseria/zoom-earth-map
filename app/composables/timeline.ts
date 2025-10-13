@@ -14,9 +14,9 @@ export type AnimationStyle = 'fast' | 'smooth'
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
-  // --- 修改: activeSatellite 用于追踪当前卫星源 ---
+  // --- activeSatellite 用于追踪当前卫星源 ---
   const activeSatellite = ref<SatelliteSource>('himawari')
-  // --- 修改: timestamps 现在是一个对象，存储每个源的时间戳 ---
+  // --- timestamps 现在是一个对象，存储每个源的时间戳 ---
   const timestamps = ref<Record<SatelliteSource, number[]>>({
     himawari: [],
     fy4b: [],
@@ -36,7 +36,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   let playInterval: NodeJS.Timeout | null = null
 
   // --- GETTERS (COMPUTED) ---
-  // --- 修改: 所有计算属性现在都依赖于 activeSatellite ---
+  // --- 所有计算属性现在都依赖于 activeSatellite ---
   const currentTimestamps = computed(() => timestamps.value[activeSatellite.value] || [])
 
   const selectedTimestamp = computed(() => {
@@ -110,7 +110,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   })
 
   // --- ACTIONS ---
-  // --- 修改: fetchTimestamps 现在会获取所有源的时间戳 ---
+  // --- fetchTimestamps 现在会获取所有源的时间戳 ---
   async function fetchTimestamps() {
     const runtimeConfig = useRuntimeConfig()
     const gisServerUrl = runtimeConfig.public.gisServerUrl
@@ -156,8 +156,6 @@ export const useTimelineStore = defineStore('timeline', () => {
 
     return currentTimestamps.value.indexOf(closestTs)
   }
-
-  // --- 接下来的所有 Actions 都需要使用 currentTimestamps.value 而不是 timestamps.value ---
 
   function nextDay() {
     if (!selectedTimestamp.value)

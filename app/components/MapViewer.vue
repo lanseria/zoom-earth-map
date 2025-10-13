@@ -17,7 +17,7 @@ const props = defineProps({
     type: String, // 'fast' or 'smooth'
     required: true,
   },
-  // --- 新增: activeSatellite prop ---
+  // --- activeSatellite prop ---
   activeSatellite: {
     type: String as PropType<SatelliteSource>,
     required: true,
@@ -52,6 +52,7 @@ onMounted(() => {
     zoom: 5,
     minZoom: 3,
     maxZoom: 8,
+    attributionControl: false,
   }))
 
   map.on('load', () => {
@@ -100,7 +101,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       data: geojsonData,
     })
 
-    // 2. 添加省会和直辖市图层 (level 1)，在 zoom >= 3 时显示
+    // 2. 省会和直辖市图层 (level 1)，在 zoom >= 3 时显示
     map.addLayer({
       id: 'capitals-points',
       type: 'circle',
@@ -136,7 +137,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       },
     })
 
-    // 3. 添加其他主要城市图层 (level 2)，在 zoom >= 5 时显示
+    // 3. 其他主要城市图层 (level 2)，在 zoom >= 5 时显示
     map.addLayer({
       id: 'other-cities-points',
       type: 'circle',
@@ -178,7 +179,7 @@ async function addCityMarkersLayerWithZoomLevels() {
 }
 
 /**
- * 添加本地 GeoJSON 国界线图层 (已优化)
+ * 添加本地 GeoJSON 国界线图层
  */
 async function addBoundaryLayer() {
   try {
@@ -187,7 +188,7 @@ async function addBoundaryLayer() {
       data: '/api/proxy/boundaries.json',
     })
 
-    // 1. 添加底层轮廓线 (粗, 黑色)
+    // 1. 添加底层轮廓线
     map.addLayer({
       id: 'country-boundaries-outline-layer',
       type: 'line',
@@ -199,7 +200,7 @@ async function addBoundaryLayer() {
       },
     })
 
-    // 2. 添加上层主线 (细, 白色)
+    // 2. 添加上层主线
     map.addLayer({
       id: 'country-boundaries-layer',
       type: 'line',
@@ -225,8 +226,7 @@ watch(() => props.selectedTimestamp, (newTimestamp, oldTimestamp) => {
 })
 
 /**
- * 更新卫星图层的核心函数，现在返回一个 Promise，在图层加载完成后 resolve
- * @param {number} timestamp - 新的时间戳
+ * @param {number} timestamp
  * @returns {Promise<void>}
  */
 function updateSatelliteLayer(timestamp: number): Promise<void> {
@@ -240,7 +240,7 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     const newSourceId = `satellite-source-${timestamp}`
     const newLayerId = `satellite-layer-${timestamp}`
 
-    // --- 修改: 动态构建 tileUrl ---
+    // --- 动态构建 tileUrl ---
     let tileUrl: string
     if (props.activeSatellite === 'fy4b') {
       // 风云4B 的 URL 格式
@@ -318,7 +318,6 @@ onUnmounted(() => {
   }
 })
 
-// 将方法暴露给父组件
 defineExpose({
   updateSatelliteLayer,
 })

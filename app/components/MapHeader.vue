@@ -1,5 +1,4 @@
 <script setup lang="ts">
-// 这个组件目前不需要任何脚本逻辑
 </script>
 
 <template>

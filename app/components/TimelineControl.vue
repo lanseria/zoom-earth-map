@@ -1,9 +1,6 @@
-// app/components/TimelineControl.vue
-
 <script setup lang="ts">
 import { useTimelineStore } from '~/composables/timeline'
 
-// 直接使用 store
 const timelineStore = useTimelineStore()
 </script>
 
