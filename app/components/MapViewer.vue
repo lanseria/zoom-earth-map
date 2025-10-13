@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { SatelliteSource } from '~/composables/timeline'
+import type { BaseMapType } from '~/constants/map'
 import maplibregl from 'maplibre-gl'
 import { useTimelineStore } from '~/composables/timeline'
+import { unifiedStyle } from '~/constants/map'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 const props = defineProps({
@@ -14,10 +16,9 @@ const props = defineProps({
     required: true,
   },
   animationStyle: {
-    type: String, // 'fast' or 'smooth'
+    type: String,
     required: true,
   },
-  // --- activeSatellite prop ---
   activeSatellite: {
     type: String as PropType<SatelliteSource>,
     required: true,
@@ -29,25 +30,43 @@ const mapContainer = ref(null)
 let map: maplibregl.Map
 let previousLayerId: any = null
 
+/**
+ * 更新底图图层的可见性
+ * @param baseMapType 要显示的底图类型
+ */
+function updateBaseMapVisibility(baseMapType: BaseMapType) {
+  if (!map || !map.isStyleLoaded())
+    return
+
+  const mapLayers: Record<string, string[]> = {
+    vec: ['tdt-vec-layer', 'tdt-cva-layer'],
+    img: ['tdt-img-layer', 'tdt-cia-layer'],
+    ter: ['tdt-ter-layer', 'tdt-cta-layer'],
+    dark: ['background'],
+  }
+
+  // 首先，隐藏所有可切换的底图和注记图层
+  Object.values(mapLayers).flat().forEach((layerId) => {
+    if (map.getLayer(layerId))
+      map.setLayoutProperty(layerId, 'visibility', 'none')
+  })
+
+  // 然后，只显示当前选定的底图及其对应的注记图层
+  const layersToShow = mapLayers[baseMapType]
+  if (layersToShow) {
+    layersToShow.forEach((layerId) => {
+      if (map.getLayer(layerId))
+        map.setLayoutProperty(layerId, 'visibility', 'visible')
+    })
+  }
+}
+
 onMounted(() => {
   if (!mapContainer.value)
     return
-  const apiKey = 'COzW8kKwrFCzdf13x98K'
   map = markRaw(new maplibregl.Map({
     container: mapContainer.value,
-    style: {
-      version: 8,
-      sources: {},
-      sprite: `https://api.maptiler.com/maps/streets-v2/sprite?key=${apiKey}`,
-      glyphs: `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${apiKey}`,
-      layers: [{
-        id: 'background',
-        type: 'background',
-        paint: {
-          'background-color': '#333333',
-        },
-      }],
-    },
+    style: unifiedStyle,
     center: [120, 30],
     zoom: 5,
     minZoom: 3,
@@ -57,10 +76,12 @@ onMounted(() => {
   }))
 
   map.on('load', () => {
+    // 1. 设置初始底图可见性 (关键修正)
+    // 此时可以保证地图样式已加载
+    updateBaseMapVisibility(timelineStore.activeBaseMap)
+    // 调用时，这些函数内部会读取 store 的初始状态来设置可见性
     addBoundaryLayer()
-    // 使用新的城市标记图层函数
     addCityMarkersLayerWithZoomLevels()
-
     if (props.selectedTimestamp)
       updateSatelliteLayer(props.selectedTimestamp)
   })
@@ -102,6 +123,8 @@ async function addCityMarkersLayerWithZoomLevels() {
       data: geojsonData,
     })
 
+    const initialVisibility = timelineStore.showCities ? 'visible' : 'none' // [!code ++]
+
     // 2. 省会和直辖市图层 (level 1)，在 zoom >= 3 时显示
     map.addLayer({
       id: 'capitals-points',
@@ -109,6 +132,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       source: 'cities-source',
       minzoom: 3, // 从 zoom 3 开始显示
       filter: ['==', 'level', 1], // 筛选 level 为 1 的城市
+      layout: { visibility: initialVisibility }, // [!code ++]
       paint: {
         'circle-radius': 3,
         'circle-color': '#ffffff',
@@ -124,6 +148,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       minzoom: 3,
       filter: ['==', 'level', 1],
       layout: {
+        'visibility': initialVisibility, // [!code ++]
         'text-field': ['get', 'name'],
         'text-size': 13,
         'text-offset': [0, -1.8],
@@ -145,6 +170,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       source: 'cities-source',
       minzoom: 5, // 从 zoom 5 开始显示
       filter: ['==', 'level', 2], // 筛选 level 为 2 的城市
+      layout: { visibility: initialVisibility }, // [!code ++]
       paint: {
         'circle-radius': 2.5,
         'circle-color': '#ffffff',
@@ -160,6 +186,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       minzoom: 5,
       filter: ['==', 'level', 2],
       layout: {
+        'visibility': initialVisibility, // [!code ++]
         'text-field': ['get', 'name'],
         'text-size': 12,
         'text-offset': [0, -1.8],
@@ -189,11 +216,14 @@ async function addBoundaryLayer() {
       data: '/api/proxy/boundaries.json',
     })
 
+    const initialVisibility = timelineStore.showBoundaries ? 'visible' : 'none' // [!code ++]
+
     // 1. 添加底层轮廓线
     map.addLayer({
       id: 'country-boundaries-outline-layer',
       type: 'line',
       source: 'local-boundaries-source',
+      layout: { visibility: initialVisibility }, // [!code ++]
       paint: {
         'line-color': '#333333',
         'line-width': 3,
@@ -206,6 +236,7 @@ async function addBoundaryLayer() {
       id: 'country-boundaries-layer',
       type: 'line',
       source: 'local-boundaries-source',
+      layout: { visibility: initialVisibility }, // [!code ++]
       paint: {
         'line-color': '#ffffff',
         'line-width': 1,
@@ -225,6 +256,33 @@ watch(() => props.selectedTimestamp, (newTimestamp, oldTimestamp) => {
   if (map && map.isStyleLoaded() && newTimestamp !== oldTimestamp) {
     updateSatelliteLayer(newTimestamp)
   }
+})
+// 监听 activeBaseMap 的变化
+watch(() => timelineStore.activeBaseMap, (newBaseMap) => {
+  updateBaseMapVisibility(newBaseMap)
+})
+
+// --- 监听图层显隐开关 ---
+watch(() => timelineStore.showBoundaries, (isVisible) => {
+  if (!map)
+    return
+  const visibility = isVisible ? 'visible' : 'none'
+  const layerIds = ['country-boundaries-outline-layer', 'country-boundaries-layer']
+  layerIds.forEach((id) => {
+    if (map.getLayer(id))
+      map.setLayoutProperty(id, 'visibility', visibility)
+  })
+})
+
+watch(() => timelineStore.showCities, (isVisible) => {
+  if (!map)
+    return
+  const visibility = isVisible ? 'visible' : 'none'
+  const layerIds = ['capitals-points', 'capitals-labels', 'other-cities-points', 'other-cities-labels']
+  layerIds.forEach((id) => {
+    if (map.getLayer(id))
+      map.setLayoutProperty(id, 'visibility', visibility)
+  })
 })
 
 /**

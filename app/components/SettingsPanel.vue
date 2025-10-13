@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { AnimationDuration, AnimationSpeed, AnimationStyle, SatelliteSource } from '~/composables/timeline'
 import { useTimelineStore } from '~/composables/timeline'
+import { MAP_STYLE_OPTIONS } from '~/constants/map'
 
 const timelineStore = useTimelineStore()
 const isPanelOpen = ref(false)
@@ -89,6 +90,57 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
                 @click="timelineStore.setMapProjection(opt.value)"
               >
                 {{ opt.label }}
+              </button>
+            </div>
+          </div>
+          <!-- 底图模式 Box -->
+          <div>
+            <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
+              底图模式
+            </h3>
+            <div class="p-0.5 rounded-md bg-dark-900/50 gap-0.5 grid grid-cols-2">
+              <button
+                v-for="opt in MAP_STYLE_OPTIONS"
+                :key="opt.id"
+                class="text-sm px-3 py-1 rounded transition-colors duration-200"
+                :class="{ 'bg-sky-600 text-white': timelineStore.activeBaseMap === opt.id, 'hover:bg-gray-600/50': timelineStore.activeBaseMap !== opt.id }"
+                @click="timelineStore.setActiveBaseMap(opt.id)"
+              >
+                {{ opt.name }}
+              </button>
+            </div>
+          </div>
+          <!-- 图层显示 Box -->
+          <div>
+            <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
+              图层显示
+            </h3>
+            <!-- 显示国界 -->
+            <div class="mt-3 flex items-center justify-between">
+              <label for="show-boundaries" class="text-sm">显示国界</label>
+              <button
+                class="p-1 rounded-full h-6 w-12 transition-colors duration-300"
+                :class="timelineStore.showBoundaries ? 'bg-sky-600' : 'bg-gray-600'"
+                @click="timelineStore.showBoundaries = !timelineStore.showBoundaries"
+              >
+                <span
+                  class="rounded-full bg-white h-4 w-4 block shadow transform transition-transform duration-300"
+                  :class="{ 'translate-x-6': timelineStore.showBoundaries }"
+                />
+              </button>
+            </div>
+            <!-- 显示城市 -->
+            <div class="mt-3 flex items-center justify-between">
+              <label for="show-cities" class="text-sm">显示城市</label>
+              <button
+                class="p-1 rounded-full h-6 w-12 transition-colors duration-300"
+                :class="timelineStore.showCities ? 'bg-sky-600' : 'bg-gray-600'"
+                @click="timelineStore.showCities = !timelineStore.showCities"
+              >
+                <span
+                  class="rounded-full bg-white h-4 w-4 block shadow transform transition-transform duration-300"
+                  :class="{ 'translate-x-6': timelineStore.showCities }"
+                />
               </button>
             </div>
           </div>

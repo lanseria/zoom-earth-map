@@ -1,7 +1,9 @@
 // app/composables/timeline.ts
 
 import type MapViewer from '~/components/MapViewer.vue'
+import type { BaseMapType } from '~/constants/map'
 import { acceptHMRUpdate, defineStore } from 'pinia'
+import { MAP_STYLE_OPTIONS } from '~/constants/map'
 
 // --- 类型定义 ---
 export type SatelliteSource = 'himawari' | 'fy4b'
@@ -29,6 +31,9 @@ export const useTimelineStore = defineStore('timeline', () => {
   const animationStyle = ref<AnimationStyle>('fast') // 动画风格
   // --- 地图投影状态，默认为平面 ---
   const mapProjection = ref<MapProjection>('mercator')
+  const activeBaseMap = ref<BaseMapType>(MAP_STYLE_OPTIONS[0]!.id)
+  const showBoundaries = ref(true)
+  const showCities = ref(true)
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
   const statusMessage = ref('正在加载时间戳...')
@@ -295,6 +300,10 @@ export const useTimelineStore = defineStore('timeline', () => {
   function setMapProjection(projection: MapProjection) {
     mapProjection.value = projection
   }
+  // --- 切换底图的 Action ---
+  function setActiveBaseMap(type: BaseMapType) {
+    activeBaseMap.value = type
+  }
 
   function cleanup() {
     if (playInterval)
@@ -339,6 +348,9 @@ export const useTimelineStore = defineStore('timeline', () => {
     animationStyle,
     isPreloading,
     mapProjection,
+    activeBaseMap,
+    showBoundaries,
+    showCities,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -359,6 +371,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     setMapViewerInstance,
     setActiveSatellite,
     setMapProjection,
+    setActiveBaseMap,
   }
 })
 
