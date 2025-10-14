@@ -123,7 +123,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       data: geojsonData,
     })
 
-    const initialVisibility = timelineStore.showCities ? 'visible' : 'none' // [!code ++]
+    const initialVisibility = timelineStore.showCities ? 'visible' : 'none'
 
     // 2. 省会和直辖市图层 (level 1)，在 zoom >= 3 时显示
     map.addLayer({
@@ -132,7 +132,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       source: 'cities-source',
       minzoom: 3, // 从 zoom 3 开始显示
       filter: ['==', 'level', 1], // 筛选 level 为 1 的城市
-      layout: { visibility: initialVisibility }, // [!code ++]
+      layout: { visibility: initialVisibility },
       paint: {
         'circle-radius': 3,
         'circle-color': '#ffffff',
@@ -148,7 +148,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       minzoom: 3,
       filter: ['==', 'level', 1],
       layout: {
-        'visibility': initialVisibility, // [!code ++]
+        'visibility': initialVisibility,
         'text-field': ['get', 'name'],
         'text-size': 13,
         'text-offset': [0, -1.8],
@@ -170,7 +170,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       source: 'cities-source',
       minzoom: 5, // 从 zoom 5 开始显示
       filter: ['==', 'level', 2], // 筛选 level 为 2 的城市
-      layout: { visibility: initialVisibility }, // [!code ++]
+      layout: { visibility: initialVisibility },
       paint: {
         'circle-radius': 2.5,
         'circle-color': '#ffffff',
@@ -186,7 +186,7 @@ async function addCityMarkersLayerWithZoomLevels() {
       minzoom: 5,
       filter: ['==', 'level', 2],
       layout: {
-        'visibility': initialVisibility, // [!code ++]
+        'visibility': initialVisibility,
         'text-field': ['get', 'name'],
         'text-size': 12,
         'text-offset': [0, -1.8],
@@ -216,14 +216,14 @@ async function addBoundaryLayer() {
       data: '/api/proxy/boundaries.json',
     })
 
-    const initialVisibility = timelineStore.showBoundaries ? 'visible' : 'none' // [!code ++]
+    const initialVisibility = timelineStore.showBoundaries ? 'visible' : 'none'
 
     // 1. 添加底层轮廓线
     map.addLayer({
       id: 'country-boundaries-outline-layer',
       type: 'line',
       source: 'local-boundaries-source',
-      layout: { visibility: initialVisibility }, // [!code ++]
+      layout: { visibility: initialVisibility },
       paint: {
         'line-color': '#333333',
         'line-width': 3,
@@ -236,7 +236,7 @@ async function addBoundaryLayer() {
       id: 'country-boundaries-layer',
       type: 'line',
       source: 'local-boundaries-source',
-      layout: { visibility: initialVisibility }, // [!code ++]
+      layout: { visibility: initialVisibility },
       paint: {
         'line-color': '#ffffff',
         'line-width': 1,
