@@ -12,6 +12,7 @@ export type MapProjection = 'mercator' | 'globe'
 export type AnimationSpeed = 'slow' | 'medium' | 'fast'
 export type AnimationDuration = 3 | 6 | 12 | 24
 export type AnimationStyle = 'fast' | 'smooth'
+export type TimelineControlStyle = 'classic' | 'ruler'
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
@@ -22,6 +23,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   const animationDuration = ref<AnimationDuration>(6) // 动画回溯时长 (小时)
   const loopPlayback = ref(true) // 是否循环播放
   const animationStyle = ref<AnimationStyle>('fast') // 动画风格
+  const controlStyle = ref<TimelineControlStyle>('classic') // 时间轴控制样式
   // --- 地图投影状态，默认为平面 ---
   const mapProjection = ref<MapProjection>('mercator')
   const activeBaseMap = ref<BaseMapType>(MAP_STYLE_OPTIONS[0]!.id)
@@ -33,7 +35,7 @@ export const useTimelineStore = defineStore('timeline', () => {
 
   let playInterval: NodeJS.Timeout | null = null
 
-// --- GETTERS (COMPUTED) ---
+  // --- GETTERS (COMPUTED) ---
   const selectedTimestamp = computed(() => {
     if (timestamps.value.length > 0)
       return timestamps.value[currentTimestampIndex.value]
@@ -307,6 +309,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     animationDuration,
     loopPlayback,
     animationStyle,
+    controlStyle,
     isPreloading,
     mapProjection,
     activeBaseMap,
@@ -332,6 +335,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     setMapViewerInstance,
     setMapProjection,
     setActiveBaseMap,
+    findClosestTimestampIndex,
   }
 })
 

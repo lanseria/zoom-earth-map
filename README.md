@@ -1,4 +1,4 @@
-# Zoom Earth Map - 动态卫星云图查看器
+# 云图天气 Zoom Earth - 动态卫星云图查看器
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Nuxt 3](https://img.shields.io/badge/Nuxt-3-00DC82.svg)](https://nuxt.com/)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AnimationDuration, AnimationSpeed, AnimationStyle } from '~/composables/timeline'
+import type { AnimationDuration, AnimationSpeed, AnimationStyle, TimelineControlStyle } from '~/composables/timeline'
 import { useTimelineStore } from '~/composables/timeline'
 import { MAP_STYLE_OPTIONS } from '~/constants/map'
 
@@ -21,7 +21,12 @@ const durationOptions: { label: string, value: AnimationDuration }[] = [
 
 const styleOptions: { label: string, value: AnimationStyle, description: string }[] = [
   { label: '快速', value: 'fast', description: '实时加载，可能会有卡顿' },
-{ label: '平滑', value: 'smooth', description: '预加载资源，播放流畅' },
+  { label: '平滑', value: 'smooth', description: '预加载资源，播放流畅' },
+]
+
+const controlStyleOptions: { label: string, value: TimelineControlStyle }[] = [
+  { label: '经典', value: 'classic' },
+  { label: '刻度尺', value: 'ruler' },
 ]
 
 const projectionOptions: { label: string, value: MapProjection }[] = [
@@ -128,6 +133,22 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
             <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
               动画
             </h3>
+            <!-- 时间轴样式 -->
+            <div class="mb-3 flex items-center justify-between">
+              <label for="control-style" class="text-sm">控制样式</label>
+              <div class="p-0.5 rounded-md bg-dark-900/50 flex items-center">
+                <button
+                  v-for="opt in controlStyleOptions"
+                  :key="opt.value"
+                  class="text-sm px-3 py-1 rounded transition-colors duration-200"
+                  :class="{ 'bg-sky-600 text-white': timelineStore.controlStyle === opt.value, 'hover:bg-gray-600/50': timelineStore.controlStyle !== opt.value }"
+                  @click="timelineStore.controlStyle = opt.value"
+                >
+                  {{ opt.label }}
+                </button>
+              </div>
+            </div>
+
             <!-- 动画速度 -->
             <div class="flex items-center justify-between">
               <label for="animation-speed" class="text-sm">动画速度</label>
