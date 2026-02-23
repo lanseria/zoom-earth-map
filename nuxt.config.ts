@@ -1,4 +1,3 @@
-import { env } from 'node:process'
 import { appDescription } from './app/constants/index'
 
 export default defineNuxtConfig({
@@ -9,6 +8,8 @@ export default defineNuxtConfig({
     '@nuxtjs/color-mode',
     '@nuxt/eslint',
   ],
+
+  ssr: false,
 
   devtools: {
     enabled: false,
