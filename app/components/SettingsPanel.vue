@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { AnimationDuration, AnimationSpeed, AnimationStyle, SatelliteSource } from '~/composables/timeline'
+import type { AnimationDuration, AnimationSpeed, AnimationStyle } from '~/composables/timeline'
 import { useTimelineStore } from '~/composables/timeline'
 import { MAP_STYLE_OPTIONS } from '~/constants/map'
 
@@ -21,13 +21,9 @@ const durationOptions: { label: string, value: AnimationDuration }[] = [
 
 const styleOptions: { label: string, value: AnimationStyle, description: string }[] = [
   { label: '快速', value: 'fast', description: '实时加载，可能会有卡顿' },
-  { label: '平滑', value: 'smooth', description: '预加载资源，播放流畅' },
+{ label: '平滑', value: 'smooth', description: '预加载资源，播放流畅' },
 ]
 
-const satelliteOptions: { label: string, value: SatelliteSource }[] = [
-  { label: 'Himawari', value: 'himawari' },
-  { label: '风云4B', value: 'fy4b' },
-]
 const projectionOptions: { label: string, value: MapProjection }[] = [
   { label: '平面', value: 'mercator' },
   { label: '地球', value: 'globe' },
@@ -59,23 +55,6 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
         class="text-white p-4 rounded-lg bg-dark-800/80 w-64 shadow-lg right-12 top-0 absolute backdrop-blur-sm"
       >
         <div class="space-y-4">
-          <!-- 卫星源 Box -->
-          <div>
-            <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
-              卫星源
-            </h3>
-            <div class="p-0.5 rounded-md bg-dark-900/50 flex items-center">
-              <button
-                v-for="opt in satelliteOptions"
-                :key="opt.value"
-                class="text-sm px-3 py-1 rounded flex-1 transition-colors duration-200"
-                :class="{ 'bg-sky-600 text-white': timelineStore.activeSatellite === opt.value, 'hover:bg-gray-600/50': timelineStore.activeSatellite !== opt.value }"
-                @click="timelineStore.setActiveSatellite(opt.value)"
-              >
-                {{ opt.label }}
-              </button>
-            </div>
-          </div>
           <!-- --- 视图模式 Box --- -->
           <div>
             <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">

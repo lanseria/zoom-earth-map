@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { SatelliteSource } from '~/composables/timeline'
 import type { BaseMapType } from '~/constants/map'
 import maplibregl from 'maplibre-gl'
 import { useTimelineStore } from '~/composables/timeline'
@@ -15,12 +14,8 @@ const props = defineProps({
     type: String,
     required: true,
   },
-  animationStyle: {
+ animationStyle: {
     type: String,
-    required: true,
-  },
-  activeSatellite: {
-    type: String as PropType<SatelliteSource>,
     required: true,
   },
 })
@@ -300,16 +295,8 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     const newSourceId = `satellite-source-${timestamp}`
     const newLayerId = `satellite-layer-${timestamp}`
 
-    // --- 动态构建 tileUrl ---
-    let tileUrl: string
-    if (props.activeSatellite === 'fy4b') {
-      // 风云4B 的 URL 格式
-      tileUrl = `${props.serverUrl}/fy-4b/${timestamp}/{z}/{x}/{y}.png`
-    }
-    else {
-      // 默认使用 Himawari 的 URL 格式
-      tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
-    }
+    // --- 构建 tileUrl ---
+    const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
 
     if (map.getSource(newSourceId)) {
       if (map.getLayer(newLayerId))
