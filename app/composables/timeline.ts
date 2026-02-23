@@ -19,16 +19,16 @@ export const useTimelineStore = defineStore('timeline', () => {
   const timestamps = ref<number[]>([])
   const currentTimestampIndex = ref(0)
   const isPlaying = ref(false)
-  const animationSpeed = ref<AnimationSpeed>('medium') // 动画速度
-  const animationDuration = ref<AnimationDuration>(6) // 动画回溯时长 (小时)
-  const loopPlayback = ref(true) // 是否循环播放
-  const animationStyle = ref<AnimationStyle>('fast') // 动画风格
-  const controlStyle = ref<TimelineControlStyle>('classic') // 时间轴控制样式
+  const animationSpeed = useLocalStorage<AnimationSpeed>('ze-animation-speed', 'medium') // 动画速度
+  const animationDuration = useLocalStorage<AnimationDuration>('ze-animation-duration', 6) // 动画回溯时长 (小时)
+  const loopPlayback = useLocalStorage<boolean>('ze-loop-playback', true) // 是否循环播放
+  const animationStyle = useLocalStorage<AnimationStyle>('ze-animation-style', 'fast') // 动画风格
+  const controlStyle = useLocalStorage<TimelineControlStyle>('ze-control-style', 'classic') // 时间轴控制样式
   // --- 地图投影状态，默认为平面 ---
-  const mapProjection = ref<MapProjection>('mercator')
-  const activeBaseMap = ref<BaseMapType>(MAP_STYLE_OPTIONS[0]!.id)
-  const showBoundaries = ref(true)
-  const showCities = ref(true)
+  const mapProjection = useLocalStorage<MapProjection>('ze-map-projection', 'mercator')
+  const activeBaseMap = useLocalStorage<BaseMapType>('ze-active-base-map', MAP_STYLE_OPTIONS[0]!.id)
+  const showBoundaries = useLocalStorage<boolean>('ze-show-boundaries', true)
+  const showCities = useLocalStorage<boolean>('ze-show-cities', true)
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
   const statusMessage = ref('正在加载时间戳...')
