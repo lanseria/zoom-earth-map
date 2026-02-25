@@ -14,7 +14,7 @@ const props = defineProps({
     type: String,
     required: true,
   },
- animationStyle: {
+  animationStyle: {
     type: String,
     required: true,
   },
@@ -88,7 +88,7 @@ onMounted(() => {
 })
 
 /**
- * 新的城市标记图层函数，实现分级显示
+ * 新的城市标记图层函数，实现分级显示、Hover效果(圆点+文字)及点击跳转
  */
 async function addCityMarkersLayerWithZoomLevels() {
   try {
@@ -97,11 +97,12 @@ async function addCityMarkersLayerWithZoomLevels() {
       throw new Error(`HTTP error! status: ${response.status}`)
     const citiesData = await response.json()
 
-    // 1. 将数据转换为 GeoJSON 格式
+    // 1. 将数据转换为 GeoJSON 格式，并添加 ID (必须用于 feature-state)
     const geojsonData: any = {
       type: 'FeatureCollection',
-      features: citiesData.map((city: any) => ({
+      features: citiesData.map((city: any, index: number) => ({
         type: 'Feature',
+        id: index, // 添加唯一 ID
         geometry: {
           type: 'Point',
           coordinates: [city.lng, city.lat],
@@ -120,17 +121,29 @@ async function addCityMarkersLayerWithZoomLevels() {
 
     const initialVisibility = timelineStore.showCities ? 'visible' : 'none'
 
+    // 定义 Hover 时的颜色 (淡蓝色 #87CEFA) 和默认颜色 (#ffffff)
+    const hoverColor = '#87CEFA'
+    const defaultColor = '#ffffff'
+
+    // MapLibre 样式表达式：根据 feature-state 的 hover 状态切换颜色
+    const activeColorStyle = [
+      'case',
+      ['boolean', ['feature-state', 'hover'], false],
+      hoverColor,
+      defaultColor,
+    ]
+
     // 2. 省会和直辖市图层 (level 1)，在 zoom >= 3 时显示
     map.addLayer({
       id: 'capitals-points',
       type: 'circle',
       source: 'cities-source',
-      minzoom: 3, // 从 zoom 3 开始显示
-      filter: ['==', 'level', 1], // 筛选 level 为 1 的城市
+      minzoom: 3,
+      filter: ['==', 'level', 1],
       layout: { visibility: initialVisibility },
       paint: {
-        'circle-radius': 3,
-        'circle-color': '#ffffff',
+        'circle-radius': 4,
+        'circle-color': activeColorStyle as any, // 应用动态颜色
         'circle-stroke-width': 1,
         'circle-stroke-color': '#333333',
       },
@@ -152,7 +165,7 @@ async function addCityMarkersLayerWithZoomLevels() {
         'text-font': ['Noto Sans Bold'],
       },
       paint: {
-        'text-color': '#ffffff',
+        'text-color': activeColorStyle as any, // 应用动态颜色
         'text-halo-color': '#333333',
         'text-halo-width': 1,
       },
@@ -163,12 +176,12 @@ async function addCityMarkersLayerWithZoomLevels() {
       id: 'other-cities-points',
       type: 'circle',
       source: 'cities-source',
-      minzoom: 5, // 从 zoom 5 开始显示
-      filter: ['==', 'level', 2], // 筛选 level 为 2 的城市
+      minzoom: 5,
+      filter: ['==', 'level', 2],
       layout: { visibility: initialVisibility },
       paint: {
-        'circle-radius': 2.5,
-        'circle-color': '#ffffff',
+        'circle-radius': 3,
+        'circle-color': activeColorStyle as any, // 应用动态颜色
         'circle-stroke-width': 0.8,
         'circle-stroke-color': '#333333',
       },
@@ -190,10 +203,85 @@ async function addCityMarkersLayerWithZoomLevels() {
         'text-font': ['DIN Pro Bold'],
       },
       paint: {
-        'text-color': '#ffffff',
+        'text-color': activeColorStyle as any, // 应用动态颜色
         'text-halo-color': '#333333',
         'text-halo-width': 0.9,
       },
+    })
+
+    // --- 交互逻辑 (Hover & Click) ---
+    // 包含圆点层和文字层，这样悬停文字时圆点也会变色，反之亦然
+    const interactionLayers = ['capitals-points', 'capitals-labels', 'other-cities-points', 'other-cities-labels']
+    let hoveredStateId: string | number | null = null
+
+    // 鼠标移动事件：处理 Hover 样式
+    map.on('mousemove', (e) => {
+      // 检查鼠标下是否有我们在意的图层特性
+      const features = map.queryRenderedFeatures(e.point, { layers: interactionLayers })
+
+      if (features.length > 0) {
+        map.getCanvas().style.cursor = 'pointer'
+        const feature = features[0]!
+        const id = feature.id
+
+        if (id !== undefined && id !== hoveredStateId) {
+          // 清除之前的 hover
+          if (hoveredStateId !== null) {
+            map.setFeatureState(
+              { source: 'cities-source', id: hoveredStateId },
+              { hover: false },
+            )
+          }
+          // 设置新的 hover
+          hoveredStateId = id
+          map.setFeatureState(
+            { source: 'cities-source', id: hoveredStateId },
+            { hover: true },
+          )
+        }
+      }
+      else {
+        // 移出有效区域但仍在地图上移动时
+        map.getCanvas().style.cursor = ''
+        if (hoveredStateId !== null) {
+          map.setFeatureState(
+            { source: 'cities-source', id: hoveredStateId },
+            { hover: false },
+          )
+          hoveredStateId = null
+        }
+      }
+    })
+
+    // 鼠标彻底移出地图容器
+    map.on('mouseleave', () => {
+      map.getCanvas().style.cursor = ''
+      if (hoveredStateId !== null) {
+        map.setFeatureState(
+          { source: 'cities-source', id: hoveredStateId },
+          { hover: false },
+        )
+        hoveredStateId = null
+      }
+    })
+
+    // 点击事件：跳转链接
+    map.on('click', interactionLayers, (e) => {
+      if (!e.features || e.features.length === 0)
+        return
+
+      const feature = e.features[0]!
+      const geometry = feature.geometry as any
+      const props = feature.properties
+
+      // 确保是点几何类型
+      if (geometry.type === 'Point') {
+        const [lon, lat] = geometry.coordinates
+        const name = props?.name || ''
+
+        const url = `http://bmcr1-wtr-r1:3030/?lat=${lat}&lon=${lon}&name=${name}`
+        window.open(url, '_blank')
+      }
     })
   }
   catch (error) {
