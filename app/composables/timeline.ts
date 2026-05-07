@@ -29,6 +29,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   const activeBaseMap = useLocalStorage<BaseMapType>('ze-active-base-map', MAP_STYLE_OPTIONS[0]!.id)
   const showBoundaries = useLocalStorage<boolean>('ze-show-boundaries', true)
   const showCities = useLocalStorage<boolean>('ze-show-cities', true)
+  const showTileGrid = useLocalStorage<boolean>('ze-show-tile-grid', false)
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
   const statusMessage = ref('正在加载时间戳...')
@@ -315,6 +316,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     activeBaseMap,
     showBoundaries,
     showCities,
+    showTileGrid,
     // Getters
     selectedTimestamp,
     formattedDate,

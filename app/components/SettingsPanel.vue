@@ -127,6 +127,20 @@ const projectionOptions: { label: string, value: MapProjection }[] = [
                 />
               </button>
             </div>
+            <!-- 贴图网格 (调试) -->
+            <div class="mt-3 flex items-center justify-between">
+              <label for="show-tile-grid" class="text-sm">贴图网格</label>
+              <button
+                class="p-1 rounded-full h-6 w-12 transition-colors duration-300"
+                :class="timelineStore.showTileGrid ? 'bg-sky-600' : 'bg-gray-600'"
+                @click="timelineStore.showTileGrid = !timelineStore.showTileGrid"
+              >
+                <span
+                  class="rounded-full bg-white h-4 w-4 block shadow transform transition-transform duration-300"
+                  :class="{ 'translate-x-6': timelineStore.showTileGrid }"
+                />
+              </button>
+            </div>
           </div>
           <!-- 动画 Box -->
           <div>

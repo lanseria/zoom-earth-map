@@ -2,7 +2,7 @@
 import type { BaseMapType } from '~/constants/map'
 import maplibregl from 'maplibre-gl'
 import { useTimelineStore } from '~/composables/timeline'
-import { unifiedStyle } from '~/constants/map'
+import { SATELLITES, unifiedStyle } from '~/constants/map'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 const props = defineProps({
@@ -23,7 +23,29 @@ const props = defineProps({
 const timelineStore = useTimelineStore()
 const mapContainer = ref(null)
 let map: maplibregl.Map
-let previousLayerId: any = null
+let previousTimestamp: number | null = null
+
+// --- 贴图网格调试工具 ---
+function lng2tile(lng: number, z: number) {
+  return Math.max(0, Math.min(Math.floor((lng + 180) / 360 * 2 ** z), 2 ** z - 1))
+}
+
+function lat2tile(lat: number, z: number) {
+  return Math.max(0, Math.min(Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * 2 ** z), 2 ** z - 1))
+}
+
+function tile2lng(x: number, z: number) {
+  return x / 2 ** z * 360 - 180
+}
+
+function tile2lat(y: number, z: number) {
+  const n = Math.PI - 2 * Math.PI * y / 2 ** z
+  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
+}
+
+function getSatelliteForLng(lng: number) {
+  return SATELLITES.find(sat => lng >= sat.bounds[0] && lng < sat.bounds[2])
+}
 
 /**
  * 更新底图图层的可见性
@@ -79,12 +101,19 @@ onMounted(() => {
     addCityMarkersLayerWithZoomLevels()
     if (props.selectedTimestamp)
       updateSatelliteLayer(props.selectedTimestamp)
+    // 恢复存储的投影设置
+    if (timelineStore.mapProjection === 'globe')
+      map.setProjection({ type: 'globe' })
+    // 初始化贴图网格
+    tileGridUpdate()
   })
 
   map.on('error', (e) => {
     if (e && e.error)
       console.error('MapLibre Error:', e.error.message)
   })
+
+  map.on('moveend', () => tileGridUpdate())
 })
 
 /**
@@ -368,6 +397,130 @@ watch(() => timelineStore.showCities, (isVisible) => {
   })
 })
 
+watch(() => timelineStore.showTileGrid, () => tileGridUpdate())
+
+/**
+ * 贴图网格调试：显示当前视口内每个贴图的边界、x/y/z 坐标和卫星 ID
+ */
+function tileGridUpdate() {
+  if (!map || !map.isStyleLoaded())
+    return
+
+  const sourceId = 'tile-grid-source'
+  const lineLayerId = 'tile-grid-lines'
+  const labelLayerId = 'tile-grid-labels'
+
+  // 隐藏网格
+  if (!timelineStore.showTileGrid) {
+    for (const id of [lineLayerId, labelLayerId]) {
+      if (map.getLayer(id))
+        map.setLayoutProperty(id, 'visibility', 'none')
+    }
+    return
+  }
+
+  const z = Math.min(Math.floor(map.getZoom()), 7)
+  const bounds = map.getBounds()
+  const maxTile = 2 ** z - 1
+  const x1 = lng2tile(bounds.getWest(), z)
+  const x2 = Math.min(lng2tile(bounds.getEast(), z), maxTile)
+  const y1 = lat2tile(bounds.getNorth(), z)
+  const y2 = Math.min(lat2tile(bounds.getSouth(), z), maxTile)
+
+  // 防止贴图数量过多
+  if ((x2 - x1 + 1) * (y2 - y1 + 1) > 200)
+    return
+
+  const features: any[] = []
+  for (let tx = x1; tx <= x2; tx++) {
+    for (let ty = y1; ty <= y2; ty++) {
+      const lng1 = tile2lng(tx, z)
+      const lng2 = tile2lng(tx + 1, z)
+      const lat1 = tile2lat(ty, z)
+      const lat2 = tile2lat(ty + 1, z)
+      const sat = getSatelliteForLng((lng1 + lng2) / 2)
+
+      // 网格线 (Polygon)
+      features.push({
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [[[lng1, lat1], [lng2, lat1], [lng2, lat2], [lng1, lat2], [lng1, lat1]]] },
+      })
+      // 标签 (Point)
+      features.push({
+        type: 'Feature',
+        properties: { label: `${sat?.id ?? '?'}\n${tx}/${ty}/${z}` },
+        geometry: { type: 'Point', coordinates: [(lng1 + lng2) / 2, (lat1 + lat2) / 2] },
+      })
+    }
+  }
+
+  const geojson = { type: 'FeatureCollection', features }
+
+  if (!map.getSource(sourceId)) {
+    map.addSource(sourceId, { type: 'geojson', data: geojson })
+    map.addLayer({
+      id: lineLayerId,
+      type: 'line',
+      source: sourceId,
+      filter: ['==', ['geometry-type'], 'Polygon'],
+      layout: { visibility: 'visible' },
+      paint: { 'line-color': '#00ff00', 'line-width': 1, 'line-opacity': 0.7 },
+    })
+    map.addLayer({
+      id: labelLayerId,
+      type: 'symbol',
+      source: sourceId,
+      filter: ['==', ['geometry-type'], 'Point'],
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-size': 10,
+        'text-allow-overlap': true,
+        'text-ignore-placement': true,
+        'text-font': ['DIN Pro Bold'],
+      },
+      paint: {
+        'text-color': '#00ff00',
+        'text-halo-color': 'rgba(0,0,0,0.8)',
+        'text-halo-width': 1.5,
+      },
+    })
+  }
+  else {
+    (map.getSource(sourceId) as maplibregl.GeoJSONSource).setData(geojson)
+    for (const id of [lineLayerId, labelLayerId]) {
+      if (map.getLayer(id))
+        map.setLayoutProperty(id, 'visibility', 'visible')
+    }
+  }
+}
+
+/**
+ * 获取指定时间戳下所有卫星的 source/layer ID
+ */
+function getSatelliteLayerIds(timestamp: number) {
+  return SATELLITES.map(sat => ({
+    sourceId: `satellite-${sat.id}-source-${timestamp}`,
+    layerId: `satellite-${sat.id}-layer-${timestamp}`,
+    bounds: sat.bounds,
+    url: `${props.serverUrl}/${sat.id}/{z}/{y}/{x}/${timestamp}.jpg`,
+  }))
+}
+
+/**
+ * 移除指定时间戳的所有卫星图层和源
+ */
+function removeSatelliteLayers(timestamp: number) {
+  if (!map)
+    return
+  for (const { sourceId, layerId } of getSatelliteLayerIds(timestamp)) {
+    if (map.getLayer(layerId))
+      map.removeLayer(layerId)
+    if (map.getSource(sourceId))
+      map.removeSource(sourceId)
+  }
+}
+
 /**
  * @param {number} timestamp
  * @returns {Promise<void>}
@@ -380,60 +533,61 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     }
 
     const FADE_DURATION = props.animationStyle === 'fast' ? 500 : 0
-    const newSourceId = `satellite-source-${timestamp}`
-    const newLayerId = `satellite-layer-${timestamp}`
+    const satelliteIds = getSatelliteLayerIds(timestamp)
 
-    // --- 构建 tileUrl ---
-    const tileUrl = `${props.serverUrl}/himawari/{z}/{y}/{x}/${timestamp}.jpg`
-
-    if (map.getSource(newSourceId)) {
-      if (map.getLayer(newLayerId))
-        map.setPaintProperty(newLayerId, 'raster-opacity', 1)
-
-      if (previousLayerId && previousLayerId !== newLayerId && map.getLayer(previousLayerId))
-        map.setPaintProperty(previousLayerId, 'raster-opacity', 0)
-
-      previousLayerId = newLayerId
+    // 检查是否已添加（检查第一个卫星的 source）
+    if (map.getSource(satelliteIds[0]!.sourceId)) {
+      // 已加载，恢复可见性
+      for (const { layerId } of satelliteIds) {
+        if (map.getLayer(layerId))
+          map.setPaintProperty(layerId, 'raster-opacity', 1)
+      }
+      // 淡出上一个时间戳
+      if (previousTimestamp !== null && previousTimestamp !== timestamp) {
+        for (const { layerId } of getSatelliteLayerIds(previousTimestamp)) {
+          if (map.getLayer(layerId))
+            map.setPaintProperty(layerId, 'raster-opacity', 0)
+        }
+      }
+      previousTimestamp = timestamp
       resolve()
       return
     }
 
-    map.addSource(newSourceId, {
-      type: 'raster',
-      tiles: [tileUrl],
-      tileSize: 256,
-      bounds: [67.5, -60, 180, 60],
-      maxzoom: 7,
-    })
+    // 为每颗卫星添加 source 和 layer
+    for (const { sourceId, layerId, bounds, url } of satelliteIds) {
+      map.addSource(sourceId, {
+        type: 'raster',
+        tiles: [url],
+        tileSize: 256,
+        bounds,
+        maxzoom: 7,
+      })
 
+      map.addLayer({
+        id: layerId,
+        type: 'raster',
+        source: sourceId,
+        paint: {
+          'raster-fade-duration': FADE_DURATION,
+          'raster-opacity': 1,
+        },
+      }, 'country-boundaries-outline-layer')
+    }
+
+    // 等待第一个卫星源加载完成后清理旧图层
     const onSourceData = (e: any) => {
-      if (e.sourceId === newSourceId && e.isSourceLoaded) {
+      if (e.sourceId === satelliteIds[0]!.sourceId && e.isSourceLoaded) {
         map.off('sourcedata', onSourceData)
-        if (previousLayerId) {
-          const oldLayerId = previousLayerId
-          const oldSourceId = `satellite-source-${oldLayerId.split('-').pop()}`
-          setTimeout(() => {
-            if (map.getLayer(oldLayerId))
-              map.removeLayer(oldLayerId)
-            if (map.getSource(oldSourceId))
-              map.removeSource(oldSourceId)
-          }, FADE_DURATION + 100)
+        if (previousTimestamp !== null && previousTimestamp !== timestamp) {
+          const oldTimestamp = previousTimestamp
+          setTimeout(() => removeSatelliteLayers(oldTimestamp), FADE_DURATION + 100)
         }
-        previousLayerId = newLayerId
+        previousTimestamp = timestamp
         resolve()
       }
     }
     map.on('sourcedata', onSourceData)
-
-    map.addLayer({
-      id: newLayerId,
-      type: 'raster',
-      source: newSourceId,
-      paint: {
-        'raster-fade-duration': FADE_DURATION,
-        'raster-opacity': 1,
-      },
-    }, 'country-boundaries-outline-layer')
   })
 }
 // --- 监听地图投影模式的变化 ---
