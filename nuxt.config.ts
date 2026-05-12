@@ -14,6 +14,7 @@ export default defineNuxtConfig({
   devtools: {
     enabled: false,
   },
+
   app: {
     head: {
       link: [
@@ -32,12 +33,17 @@ export default defineNuxtConfig({
   colorMode: {
     classSuffix: '',
   },
+
   // 定义运行时配置
   runtimeConfig: {
     // public 下的变量会暴露给前端
     public: {
       gisServerUrl: '',
     },
+  },
+
+  devServer: {
+    port: 19998,
   },
 
   future: {
@@ -62,7 +68,6 @@ export default defineNuxtConfig({
     prerender: {
       crawlLinks: false,
       routes: ['/'],
-      ignore: ['/hi'],
     },
   },
   vite: {
