@@ -129,6 +129,20 @@ function togglePanel() {
             <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
               火烧云指数
             </h3>
+            <!-- 显示开关 -->
+            <div class="flex items-center justify-between mt-2">
+              <label class="text-sm">显示图层</label>
+              <button
+                class="p-1 rounded-full h-6 w-12 transition-colors duration-300"
+                :class="timelineStore.showChromaticSky ? 'bg-sky-600' : 'bg-gray-600'"
+                @click="timelineStore.showChromaticSky = !timelineStore.showChromaticSky"
+              >
+                <span
+                  class="rounded-full bg-white h-4 w-4 block shadow transform transition-transform duration-300"
+                  :class="{ 'translate-x-6': timelineStore.showChromaticSky }"
+                />
+              </button>
+            </div>
 
             <!-- 月份导航 -->
             <div class="flex items-center justify-between mt-2">

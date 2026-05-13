@@ -441,7 +441,7 @@ function updateChromaticSkyLayer() {
   if (map.getSource(CHROMATIC_SKY_SOURCE_ID))
     map.removeSource(CHROMATIC_SKY_SOURCE_ID)
 
-  if (!sel)
+  if (!sel || !timelineStore.showChromaticSky)
     return
 
   // 直接使用 serverUrl
@@ -464,7 +464,7 @@ function updateChromaticSkyLayer() {
   }, 'country-boundaries-outline-layer')
 }
 
-watch(() => timelineStore.chromaticSkySelection, () => {
+watch(() => [timelineStore.chromaticSkySelection, timelineStore.showChromaticSky] as const, () => {
   updateChromaticSkyLayer()
 }, { deep: true })
 

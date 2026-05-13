@@ -43,6 +43,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   // --- 火烧云图层 ---
   const chromaticSkyManifest = ref<ChromaticSkyResource[]>([])
   const chromaticSkySelection = ref<ChromaticSkyResource | null>(null)
+  const showChromaticSky = useLocalStorage<boolean>('ze-show-chromatic-sky', true)
 
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
@@ -351,6 +352,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     satelliteVisibility,
     chromaticSkyManifest,
     chromaticSkySelection,
+    showChromaticSky,
     // Getters
     selectedTimestamp,
     formattedDate,
