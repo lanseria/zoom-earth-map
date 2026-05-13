@@ -3,7 +3,7 @@
 import type MapViewer from '~/components/MapViewer.vue'
 import type { BaseMapType } from '~/constants/map'
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { MAP_STYLE_OPTIONS } from '~/constants/map'
+import { MAP_STYLE_OPTIONS, SATELLITES } from '~/constants/map'
 
 // --- 类型定义 ---
 // --- 地图投影类型 ---
@@ -13,6 +13,8 @@ export type AnimationSpeed = 'slow' | 'medium' | 'fast'
 export type AnimationDuration = 3 | 6 | 12 | 24
 export type AnimationStyle = 'fast' | 'smooth'
 export type TimelineControlStyle = 'classic' | 'ruler'
+
+export interface ChromaticSkyResource { date: string, event: string }
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
@@ -30,6 +32,18 @@ export const useTimelineStore = defineStore('timeline', () => {
   const showBoundaries = useLocalStorage<boolean>('ze-show-boundaries', true)
   const showCities = useLocalStorage<boolean>('ze-show-cities', true)
   const showTileGrid = useLocalStorage<boolean>('ze-show-tile-grid', false)
+  // --- 卫星云图图层可见性 ---
+  const showSatelliteCloud = useLocalStorage<boolean>('ze-show-satellite-cloud', true)
+  const satelliteVisibility = useLocalStorage<Record<string, boolean>>('ze-satellite-visibility', () => {
+    const map: Record<string, boolean> = {}
+    for (const sat of SATELLITES)
+      map[sat.id] = true
+    return map
+  })
+  // --- 火烧云图层 ---
+  const chromaticSkyManifest = ref<ChromaticSkyResource[]>([])
+  const chromaticSkySelection = ref<ChromaticSkyResource | null>(null)
+
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
   const statusMessage = ref('正在加载时间戳...')
@@ -113,7 +127,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     const gisServerUrl = runtimeConfig.public.gisServerUrl
 
     try {
-      const response = await $fetch<number[]>(`${gisServerUrl}/himawari/timestamps.json`).catch((e) => {
+      const response = await $fetch<number[]>(`${gisServerUrl}/zoom-earth-tiles/himawari/timestamps.json`).catch((e) => {
         console.error('加载 Himawari 时间戳失败:', e); return []
       })
 
@@ -130,6 +144,22 @@ export const useTimelineStore = defineStore('timeline', () => {
       console.error(error)
       statusMessage.value = `加载失败：${error.message}。请确保 GIS 服务器正在运行并且允许跨域。`
     }
+  }
+
+  async function fetchChromaticSkyManifest() {
+    const runtimeConfig = useRuntimeConfig()
+    const baseUrl = runtimeConfig.public.gisServerUrl as string
+    try {
+      const response = await $fetch<{ resources: ChromaticSkyResource[] }>(`${baseUrl}/chroma-sky-tiles/tiles_manifest.json`)
+      chromaticSkyManifest.value = response.resources ?? []
+    }
+    catch (e) {
+      console.error('加载火烧云清单失败:', e)
+    }
+  }
+
+  function setChromaticSkySelection(resource: ChromaticSkyResource | null) {
+    chromaticSkySelection.value = resource
   }
 
   /**
@@ -317,6 +347,10 @@ export const useTimelineStore = defineStore('timeline', () => {
     showBoundaries,
     showCities,
     showTileGrid,
+    showSatelliteCloud,
+    satelliteVisibility,
+    chromaticSkyManifest,
+    chromaticSkySelection,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -338,6 +372,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     setMapProjection,
     setActiveBaseMap,
     findClosestTimestampIndex,
+    fetchChromaticSkyManifest,
+    setChromaticSkySelection,
   }
 })
 

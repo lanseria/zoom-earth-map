@@ -399,6 +399,75 @@ watch(() => timelineStore.showCities, (isVisible) => {
 
 watch(() => timelineStore.showTileGrid, () => tileGridUpdate())
 
+// --- 监听卫星云图可见性变化 ---
+function updateSatelliteCloudVisibility() {
+  if (!map || !map.isStyleLoaded())
+    return
+
+  const showAll = timelineStore.showSatelliteCloud
+  const satVis = timelineStore.satelliteVisibility
+
+  for (const sat of SATELLITES) {
+    const visible = showAll && satVis[sat.id]
+    const visibility = visible ? 'visible' : 'none'
+    // 遍历地图中所有图层，匹配该卫星的图层
+    const style = map.getStyle()
+    for (const layer of style.layers) {
+      if (layer.id.startsWith(`satellite-${sat.id}-layer-`)) {
+        map.setLayoutProperty(layer.id, 'visibility', visibility)
+      }
+    }
+  }
+}
+
+watch(() => [timelineStore.showSatelliteCloud, timelineStore.satelliteVisibility] as const, () => {
+  updateSatelliteCloudVisibility()
+}, { deep: true })
+
+// --- 火烧云图层 ---
+const CHROMATIC_SKY_SOURCE_ID = 'chromatic-sky-source'
+const CHROMATIC_SKY_LAYER_ID = 'chromatic-sky-layer'
+
+
+function updateChromaticSkyLayer() {
+  if (!map || !map.isStyleLoaded())
+    return
+
+  const sel = timelineStore.chromaticSkySelection
+
+  // 移除旧图层
+  if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
+    map.removeLayer(CHROMATIC_SKY_LAYER_ID)
+  if (map.getSource(CHROMATIC_SKY_SOURCE_ID))
+    map.removeSource(CHROMATIC_SKY_SOURCE_ID)
+
+  if (!sel)
+    return
+
+  // 直接使用 serverUrl
+  const tileUrl = `${props.serverUrl}/chroma-sky-tiles/{z}/{x}/{y}/${sel.date}-${sel.event}.png`
+
+  map.addSource(CHROMATIC_SKY_SOURCE_ID, {
+    type: 'raster',
+    tiles: [tileUrl],
+    tileSize: 256,
+    maxzoom: 7,
+  })
+
+  map.addLayer({
+    id: CHROMATIC_SKY_LAYER_ID,
+    type: 'raster',
+    source: CHROMATIC_SKY_SOURCE_ID,
+    paint: {
+      'raster-opacity': 0.8,
+    },
+  }, 'country-boundaries-outline-layer')
+}
+
+watch(() => timelineStore.chromaticSkySelection, () => {
+  updateChromaticSkyLayer()
+}, { deep: true })
+
 /**
  * 贴图网格调试：显示当前视口内每个贴图的边界、x/y/z 坐标和卫星 ID
  */
@@ -503,7 +572,7 @@ function getSatelliteLayerIds(timestamp: number) {
     sourceId: `satellite-${sat.id}-source-${timestamp}`,
     layerId: `satellite-${sat.id}-layer-${timestamp}`,
     bounds: sat.bounds,
-    url: `${props.serverUrl}/${sat.id}/{z}/{y}/{x}/${timestamp}.jpg`,
+    url: `${props.serverUrl}/zoom-earth-tiles/${sat.id}/{z}/{y}/{x}/${timestamp}.jpg`,
   }))
 }
 
@@ -555,7 +624,11 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     }
 
     // 为每颗卫星添加 source 和 layer
-    for (const { sourceId, layerId, bounds, url } of satelliteIds) {
+    for (let i = 0; i < satelliteIds.length; i++) {
+      const { sourceId, layerId, bounds, url } = satelliteIds[i]!
+      const satId = SATELLITES[i]!.id
+      const visible = timelineStore.showSatelliteCloud && timelineStore.satelliteVisibility[satId]
+
       map.addSource(sourceId, {
         type: 'raster',
         tiles: [url],
@@ -568,6 +641,7 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
         id: layerId,
         type: 'raster',
         source: sourceId,
+        layout: { visibility: visible ? 'visible' : 'none' },
         paint: {
           'raster-fade-duration': FADE_DURATION,
           'raster-opacity': 1,
@@ -575,13 +649,17 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
       }, 'country-boundaries-outline-layer')
     }
 
+    // 确保火烧云图层始终在卫星云图之上
+    if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
+      map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
+
     // 等待第一个卫星源加载完成后清理旧图层
     const onSourceData = (e: any) => {
       if (e.sourceId === satelliteIds[0]!.sourceId && e.isSourceLoaded) {
         map.off('sourcedata', onSourceData)
         if (previousTimestamp !== null && previousTimestamp !== timestamp) {
           const oldTimestamp = previousTimestamp
-          setTimeout(() => removeSatelliteLayers(oldTimestamp), FADE_DURATION + 100)
+          setTimeout(removeSatelliteLayers, FADE_DURATION + 100, oldTimestamp)
         }
         previousTimestamp = timestamp
         resolve()

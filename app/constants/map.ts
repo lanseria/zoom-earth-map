@@ -20,11 +20,11 @@ export type BaseMapType = typeof BASE_MAP_TYPES[keyof typeof BASE_MAP_TYPES]
 // mtg-zero (-45~45) 与 msg-iodc (22.5~90) 重叠 → 22.5 归 msg-iodc
 // msg-iodc (22.5~90) 与 himawari (67.5~180) 重叠 → 67.5 归 himawari
 export const SATELLITES = [
-  { id: 'goes-west', bounds: [-180, -60, -135, 60] as [number, number, number, number] },
-  { id: 'goes-east', bounds: [-135, -60, -22.5, 60] as [number, number, number, number] },
-  { id: 'mtg-zero', bounds: [-22.5, -60, 45, 60] as [number, number, number, number] },
-  { id: 'msg-iodc', bounds: [45, -60, 90, 60] as [number, number, number, number] },
-  { id: 'himawari', bounds: [90, -60, 180, 60] as [number, number, number, number] },
+  { id: 'goes-west', name: 'GOES-West', bounds: [-180, -60, -135, 60] as [number, number, number, number] },
+  { id: 'goes-east', name: 'GOES-East', bounds: [-135, -60, -22.5, 60] as [number, number, number, number] },
+  { id: 'mtg-zero', name: 'MTG', bounds: [-22.5, -60, 45, 60] as [number, number, number, number] },
+  { id: 'msg-iodc', name: 'MSG-IODC', bounds: [45, -60, 90, 60] as [number, number, number, number] },
+  { id: 'himawari', name: 'Himawari', bounds: [90, -60, 180, 60] as [number, number, number, number] },
 ]
 
 export const MAP_STYLE_OPTIONS: { name: string, id: BaseMapType }[] = [
