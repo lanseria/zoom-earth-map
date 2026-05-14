@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { BaseMapType } from '~/constants/map'
+import { createApp } from 'vue'
 import maplibregl from 'maplibre-gl'
 import { useTimelineStore } from '~/composables/timeline'
 import { SATELLITES, unifiedStyle } from '~/constants/map'
+import GlowIndexPopup from '~/components/GlowIndexPopup.vue'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 const props = defineProps({
@@ -114,6 +116,21 @@ onMounted(() => {
   })
 
   map.on('moveend', () => tileGridUpdate())
+
+  // --- 火烧云图层点击查询 ---
+  map.on('click', (e) => {
+    if (!timelineStore.showChromaticSky || !timelineStore.chromaticSkySelection)
+      return
+    // 如果点到了城市图层，不触发火烧云查询
+    const cityFeatures = map.queryRenderedFeatures(e.point, {
+      layers: ['capitals-points', 'capitals-labels', 'other-cities-points', 'other-cities-labels'],
+    })
+    if (cityFeatures.length > 0)
+      return
+
+    const { lng, lat } = e.lngLat
+    queryGlowIndex(lng, lat)
+  })
 })
 
 /**
@@ -428,6 +445,58 @@ watch(() => [timelineStore.showSatelliteCloud, timelineStore.satelliteVisibility
 const CHROMATIC_SKY_SOURCE_ID = 'chromatic-sky-source'
 const CHROMATIC_SKY_LAYER_ID = 'chromatic-sky-layer'
 
+let glowIndexPopup: maplibregl.Popup | null = null
+let glowIndexApp: ReturnType<typeof createApp> | null = null
+
+function closeGlowIndexPopup() {
+  if (glowIndexApp) {
+    glowIndexApp.unmount()
+    glowIndexApp = null
+  }
+  if (glowIndexPopup) {
+    glowIndexPopup.remove()
+    glowIndexPopup = null
+  }
+}
+
+function mountPopupComponent(props: { data: any, error: string | null }): HTMLDivElement {
+  const el = document.createElement('div')
+  glowIndexApp = createApp(GlowIndexPopup, props)
+  glowIndexApp.mount(el)
+  return el
+}
+
+async function queryGlowIndex(lng: number, lat: number) {
+  const sel = timelineStore.chromaticSkySelection
+  if (!sel)
+    return
+
+  const [year, month, day] = [sel.date.slice(0, 4), sel.date.slice(4, 6), sel.date.slice(6, 8)]
+  const dateStr = `${year}-${month}-${day}`
+  const apiUrl = `http://bmcr1-wtr-r1:8002/api/glow-index?lat=${lat.toFixed(4)}&lon=${lng.toFixed(4)}&event=${sel.event}&date=${dateStr}`
+
+  // 加载中 popup
+  closeGlowIndexPopup()
+  glowIndexPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '280px', className: 'glow-index-popup' })
+    .setLngLat([lng, lat])
+    .setDOMContent(mountPopupComponent({ data: null, error: null }))
+    .addTo(map!)
+
+  try {
+    const data = await $fetch<{
+      lat: number, lon: number, date: string, event: string
+      event_time: string, data_time: string
+      final_score: number, score_boundary: number, score_hcc: number
+      score_mcc: number, score_lcc: number, score_aod550: number
+    }>(apiUrl)
+
+    glowIndexPopup!.setDOMContent(mountPopupComponent({ data, error: null }))
+  }
+  catch (err: any) {
+    const msg = err?.data?.detail || err?.message || '查询失败'
+    glowIndexPopup!.setDOMContent(mountPopupComponent({ data: null, error: msg }))
+  }
+}
 
 function updateChromaticSkyLayer() {
   if (!map || !map.isStyleLoaded())
@@ -680,6 +749,7 @@ watch(() => timelineStore.mapProjection, (newProjection) => {
 })
 
 onUnmounted(() => {
+  closeGlowIndexPopup()
   if (map) {
     map.remove()
   }
@@ -705,5 +775,24 @@ defineExpose({
 }
 :deep(.maplibregl-ctrl-attrib a) {
   color: #fff; /* 让 attribution 文字也变成白色 */
+}
+:deep(.glow-index-popup .maplibregl-popup-content) {
+  background: #1e1e1e;
+  border-radius: 8px;
+  padding: 0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+}
+:deep(.glow-index-popup .maplibregl-popup-tip) {
+  border-top-color: #1e1e1e;
+}
+:deep(.glow-index-popup .maplibregl-popup-close-button) {
+  color: #999;
+  font-size: 18px;
+  right: 6px;
+  top: 4px;
+}
+:deep(.glow-index-popup .maplibregl-popup-close-button:hover) {
+  color: #fff;
+  background: transparent;
 }
 </style>
