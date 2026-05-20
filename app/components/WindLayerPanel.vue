@@ -4,6 +4,21 @@ import { useTimelineStore, WIND_LEVELS } from '~/composables/timeline'
 const timelineStore = useTimelineStore()
 const isPanelOpen = ref(false)
 
+const windTimeLabel = computed(() => {
+  const ts = timelineStore.currentWindTimestamp
+  if (!ts)
+    return null
+  return new Date(ts * 1000).toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Shanghai',
+  })
+})
+
 function togglePanel() {
   isPanelOpen.value = !isPanelOpen.value
   if (isPanelOpen.value)
@@ -53,6 +68,13 @@ function togglePanel() {
                   :class="{ 'translate-x-6': timelineStore.showWind }"
                 />
               </button>
+            </div>
+            <!-- 当前风力时间 -->
+            <div v-if="timelineStore.showWind && windTimeLabel" class="mt-2 text-sm text-gray-300">
+              当前风力时间：<span class="text-white">{{ windTimeLabel }}</span>（北京时间）
+            </div>
+            <div v-else-if="timelineStore.showWind && !windTimeLabel" class="mt-2 text-sm text-gray-400">
+              当前时间无风力数据
             </div>
 
             <!-- 等压面单选列表 -->

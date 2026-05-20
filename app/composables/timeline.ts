@@ -28,12 +28,7 @@ export const WIND_LEVELS = [
   { id: '100hPa', label: '100 hPa', altitude: '~16,000 m' },
 ]
 
-/** 风力时间戳 → 瓦片文件名 (YYYYMMDD_HHMM) */
-export function windTimestampToFilename(ts: number): string {
-  const d = new Date(ts * 1000)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}_${p(d.getUTCHours())}${p(d.getUTCMinutes())}`
-}
+
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
@@ -67,6 +62,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   const showWind = useLocalStorage<boolean>('ze-show-wind', false)
   const selectedWindLevel = useLocalStorage<string>('ze-selected-wind-level', '850hPa')
   const windManifests = ref<Record<string, number[]>>({})
+  const currentWindTimestamp = ref<number | null>(null)
 
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
@@ -207,9 +203,28 @@ export const useTimelineStore = defineStore('timeline', () => {
     const tsList = windManifests.value[levelId]
     if (!tsList || tsList.length === 0)
       return null
-    return tsList.reduce((prev, curr) =>
-      Math.abs(curr - satelliteTimestamp) < Math.abs(prev - satelliteTimestamp) ? curr : prev,
-    )
+    const sorted = [...tsList].sort((a, b) => a - b)
+    if (sorted[0]! > satelliteTimestamp)
+      return null
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (sorted[i]! <= satelliteTimestamp)
+        return sorted[i]!
+    }
+    return null
+  }
+
+  function jumpToTimestamp(ts: number) {
+    const idx = timestamps.value.indexOf(ts)
+    if (idx !== -1)
+      currentTimestampIndex.value = idx
+  }
+
+  function getAvailableWindTimestamps(levelId: string): number[] {
+    const windTs = windManifests.value[levelId]
+    if (!windTs || windTs.length === 0)
+      return []
+    const satSet = new Set(timestamps.value)
+    return windTs.filter(ts => satSet.has(ts))
   }
 
   /**
@@ -405,6 +420,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     showWind,
     selectedWindLevel,
     windManifests,
+    currentWindTimestamp,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -430,6 +446,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     setChromaticSkySelection,
     fetchWindManifests,
     getClosestWindTimestamp,
+    jumpToTimestamp,
+    getAvailableWindTimestamps,
   }
 })
 

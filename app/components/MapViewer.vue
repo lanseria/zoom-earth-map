@@ -3,7 +3,6 @@ import type { BaseMapType } from '~/constants/map'
 import { createApp } from 'vue'
 import maplibregl from 'maplibre-gl'
 import { useTimelineStore } from '~/composables/timeline'
-import { windTimestampToFilename } from '~/composables/timeline'
 import { SATELLITES, unifiedStyle } from '~/constants/map'
 import GlowIndexPopup from '~/components/GlowIndexPopup.vue'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -541,9 +540,39 @@ watch(() => [timelineStore.chromaticSkySelection, timelineStore.showChromaticSky
 // --- 风力图层 ---
 const WIND_SOURCE_ID = 'wind-source'
 const WIND_LAYER_ID = 'wind-layer'
+let lastWindTileUrl = ''
 
 function updateWindLayer() {
   if (!map || !map.isStyleLoaded())
+    return
+
+  if (!timelineStore.showWind || !props.selectedTimestamp) {
+    timelineStore.currentWindTimestamp = null
+    if (map.getLayer(WIND_LAYER_ID))
+      map.removeLayer(WIND_LAYER_ID)
+    if (map.getSource(WIND_SOURCE_ID))
+      map.removeSource(WIND_SOURCE_ID)
+    lastWindTileUrl = ''
+    return
+  }
+
+  const level = timelineStore.selectedWindLevel
+  const windTs = timelineStore.getClosestWindTimestamp(level, props.selectedTimestamp)
+  if (!windTs) {
+    timelineStore.currentWindTimestamp = null
+    if (map.getLayer(WIND_LAYER_ID))
+      map.removeLayer(WIND_LAYER_ID)
+    if (map.getSource(WIND_SOURCE_ID))
+      map.removeSource(WIND_SOURCE_ID)
+    lastWindTileUrl = ''
+    return
+  }
+
+  timelineStore.currentWindTimestamp = windTs
+  const tileUrl = `${props.serverUrl}/wind-tiles/${level}/{z}/{x}` + `/{y}/${windTs}.png`
+
+  // URL 未变则跳过
+  if (tileUrl === lastWindTileUrl)
     return
 
   // 移除旧图层
@@ -552,16 +581,7 @@ function updateWindLayer() {
   if (map.getSource(WIND_SOURCE_ID))
     map.removeSource(WIND_SOURCE_ID)
 
-  if (!timelineStore.showWind || !props.selectedTimestamp)
-    return
-
-  const level = timelineStore.selectedWindLevel
-  const windTs = timelineStore.getClosestWindTimestamp(level, props.selectedTimestamp)
-  if (!windTs)
-    return
-
-  const filename = windTimestampToFilename(windTs)
-  const tileUrl = `${props.serverUrl}/wind-tiles/${level}/{z}/{x}` + `/{y}/${filename}.png`
+  lastWindTileUrl = tileUrl
 
   map.addSource(WIND_SOURCE_ID, {
     type: 'raster',
@@ -585,11 +605,10 @@ function updateWindLayer() {
     map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
 }
 
-watch(
-  () => [props.selectedTimestamp, timelineStore.showWind, timelineStore.selectedWindLevel, timelineStore.windManifests] as const,
-  () => updateWindLayer(),
-  { deep: true },
-)
+watch(() => props.selectedTimestamp, () => updateWindLayer())
+watch(() => timelineStore.showWind, () => updateWindLayer())
+watch(() => timelineStore.selectedWindLevel, () => { lastWindTileUrl = ''; updateWindLayer() })
+watch(() => timelineStore.windManifests, () => updateWindLayer(), { deep: true })
 
 /**
  * 贴图网格调试：显示当前视口内每个贴图的边界、x/y/z 坐标和卫星 ID
