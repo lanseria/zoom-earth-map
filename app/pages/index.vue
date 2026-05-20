@@ -44,6 +44,7 @@ onUnmounted(() => {
       <SettingsPanel />
       <SatelliteLayerPanel />
       <ChromaticSkyPanel />
+      <WindLayerPanel />
       <!-- 平滑动画加载指示器 -->
       <Transition
         enter-from-class="opacity-0 -translate-y-full"

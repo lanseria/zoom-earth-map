@@ -3,6 +3,7 @@ import type { BaseMapType } from '~/constants/map'
 import { createApp } from 'vue'
 import maplibregl from 'maplibre-gl'
 import { useTimelineStore } from '~/composables/timeline'
+import { windTimestampToFilename } from '~/composables/timeline'
 import { SATELLITES, unifiedStyle } from '~/constants/map'
 import GlowIndexPopup from '~/components/GlowIndexPopup.vue'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -537,6 +538,59 @@ watch(() => [timelineStore.chromaticSkySelection, timelineStore.showChromaticSky
   updateChromaticSkyLayer()
 }, { deep: true })
 
+// --- 风力图层 ---
+const WIND_SOURCE_ID = 'wind-source'
+const WIND_LAYER_ID = 'wind-layer'
+
+function updateWindLayer() {
+  if (!map || !map.isStyleLoaded())
+    return
+
+  // 移除旧图层
+  if (map.getLayer(WIND_LAYER_ID))
+    map.removeLayer(WIND_LAYER_ID)
+  if (map.getSource(WIND_SOURCE_ID))
+    map.removeSource(WIND_SOURCE_ID)
+
+  if (!timelineStore.showWind || !props.selectedTimestamp)
+    return
+
+  const level = timelineStore.selectedWindLevel
+  const windTs = timelineStore.getClosestWindTimestamp(level, props.selectedTimestamp)
+  if (!windTs)
+    return
+
+  const filename = windTimestampToFilename(windTs)
+  const tileUrl = `${props.serverUrl}/wind-tiles/${level}/{z}/{x}` + `/{y}/${filename}.png`
+
+  map.addSource(WIND_SOURCE_ID, {
+    type: 'raster',
+    tiles: [tileUrl],
+    tileSize: 256,
+    minzoom: 3,
+    maxzoom: 8,
+  })
+
+  map.addLayer({
+    id: WIND_LAYER_ID,
+    type: 'raster',
+    source: WIND_SOURCE_ID,
+    paint: {
+      'raster-opacity': 0.85,
+    },
+  }, 'country-boundaries-outline-layer')
+
+  // 确保火烧云在风力图层之上
+  if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
+    map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
+}
+
+watch(
+  () => [props.selectedTimestamp, timelineStore.showWind, timelineStore.selectedWindLevel, timelineStore.windManifests] as const,
+  () => updateWindLayer(),
+  { deep: true },
+)
+
 /**
  * 贴图网格调试：显示当前视口内每个贴图的边界、x/y/z 坐标和卫星 ID
  */
@@ -719,6 +773,11 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     }
 
     // 确保火烧云图层始终在卫星云图之上
+    if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
+      map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
+    // 确保风力图层在卫星云图之上
+    if (map.getLayer(WIND_LAYER_ID))
+      map.moveLayer(WIND_LAYER_ID, 'country-boundaries-outline-layer')
     if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
       map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
 

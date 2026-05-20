@@ -16,6 +16,25 @@ export type TimelineControlStyle = 'classic' | 'ruler'
 
 export interface ChromaticSkyResource { date: string, event: string }
 
+// --- 风力等压面层定义 ---
+export const WIND_LEVELS = [
+  { id: '1000hPa', label: '1000 hPa', altitude: '~100 m' },
+  { id: '850hPa', label: '850 hPa', altitude: '~1,500 m' },
+  { id: '700hPa', label: '700 hPa', altitude: '~3,000 m' },
+  { id: '500hPa', label: '500 hPa', altitude: '~5,500 m' },
+  { id: '300hPa', label: '300 hPa', altitude: '~9,000 m' },
+  { id: '250hPa', label: '250 hPa', altitude: '~10,000 m' },
+  { id: '200hPa', label: '200 hPa', altitude: '~12,000 m' },
+  { id: '100hPa', label: '100 hPa', altitude: '~16,000 m' },
+]
+
+/** 风力时间戳 → 瓦片文件名 (YYYYMMDD_HHMM) */
+export function windTimestampToFilename(ts: number): string {
+  const d = new Date(ts * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}_${p(d.getUTCHours())}${p(d.getUTCMinutes())}`
+}
+
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
   const timestamps = ref<number[]>([])
@@ -44,6 +63,10 @@ export const useTimelineStore = defineStore('timeline', () => {
   const chromaticSkyManifest = ref<ChromaticSkyResource[]>([])
   const chromaticSkySelection = ref<ChromaticSkyResource | null>(null)
   const showChromaticSky = useLocalStorage<boolean>('ze-show-chromatic-sky', true)
+  // --- 风力图层 ---
+  const showWind = useLocalStorage<boolean>('ze-show-wind', false)
+  const selectedWindLevel = useLocalStorage<string>('ze-selected-wind-level', '850hPa')
+  const windManifests = ref<Record<string, number[]>>({})
 
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
@@ -161,6 +184,32 @@ export const useTimelineStore = defineStore('timeline', () => {
 
   function setChromaticSkySelection(resource: ChromaticSkyResource | null) {
     chromaticSkySelection.value = resource
+  }
+
+  // --- 风力图层 Actions ---
+  async function fetchWindManifests() {
+    const runtimeConfig = useRuntimeConfig()
+    const baseUrl = runtimeConfig.public.gisServerUrl as string
+    for (const level of WIND_LEVELS) {
+      if (windManifests.value[level.id])
+        continue
+      try {
+        const response = await $fetch<{ timestamps: number[] }>(`${baseUrl}/wind-tiles/${level.id}/tiles_manifest.json`)
+        windManifests.value[level.id] = response.timestamps ?? []
+      }
+      catch (e) {
+        console.error(`加载风力清单失败 (${level.id}):`, e)
+      }
+    }
+  }
+
+  function getClosestWindTimestamp(levelId: string, satelliteTimestamp: number): number | null {
+    const tsList = windManifests.value[levelId]
+    if (!tsList || tsList.length === 0)
+      return null
+    return tsList.reduce((prev, curr) =>
+      Math.abs(curr - satelliteTimestamp) < Math.abs(prev - satelliteTimestamp) ? curr : prev,
+    )
   }
 
   /**
@@ -353,6 +402,9 @@ export const useTimelineStore = defineStore('timeline', () => {
     chromaticSkyManifest,
     chromaticSkySelection,
     showChromaticSky,
+    showWind,
+    selectedWindLevel,
+    windManifests,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -376,6 +428,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     findClosestTimestampIndex,
     fetchChromaticSkyManifest,
     setChromaticSkySelection,
+    fetchWindManifests,
+    getClosestWindTimestamp,
   }
 })
 
