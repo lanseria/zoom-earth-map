@@ -556,7 +556,7 @@ let windLayerGen = 0
 async function updateWindLayer() {
   const gen = ++windLayerGen
 
-  if (!map || !map.isStyleLoaded())
+  if (!map)
     return
 
   if (!timelineStore.showWind) {
