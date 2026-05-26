@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import type { BaseMapType } from '~/constants/map'
-import { createApp } from 'vue'
+import type { WindData } from '~/utils/wind-particles'
 import maplibregl from 'maplibre-gl'
+import { createApp } from 'vue'
+import GlowIndexPopup from '~/components/GlowIndexPopup.vue'
 import { useTimelineStore } from '~/composables/timeline'
 import { SATELLITES, unifiedStyle } from '~/constants/map'
-import GlowIndexPopup from '~/components/GlowIndexPopup.vue'
+import { WindParticleLayer } from '~/utils/wind-particles'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 const props = defineProps({
@@ -103,6 +105,8 @@ onMounted(() => {
     addCityMarkersLayerWithZoomLevels()
     if (props.selectedTimestamp)
       updateSatelliteLayer(props.selectedTimestamp)
+    if (timelineStore.showWind)
+      updateWindLayer()
     // 恢复存储的投影设置
     if (timelineStore.mapProjection === 'globe')
       map.setProjection({ type: 'globe' })
@@ -484,10 +488,18 @@ async function queryGlowIndex(lng: number, lat: number) {
 
   try {
     const data = await $fetch<{
-      lat: number, lon: number, date: string, event: string
-      event_time: string, data_time: string
-      final_score: number, score_boundary: number, score_hcc: number
-      score_mcc: number, score_lcc: number, score_aod550: number
+      lat: number
+      lon: number
+      date: string
+      event: string
+      event_time: string
+      data_time: string
+      final_score: number
+      score_boundary: number
+      score_hcc: number
+      score_mcc: number
+      score_lcc: number
+      score_aod550: number
     }>(apiUrl)
 
     glowIndexPopup!.setDOMContent(mountPopupComponent({ data, error: null }))
@@ -537,78 +549,54 @@ watch(() => [timelineStore.chromaticSkySelection, timelineStore.showChromaticSky
   updateChromaticSkyLayer()
 }, { deep: true })
 
-// --- 风力图层 ---
-const WIND_SOURCE_ID = 'wind-source'
-const WIND_LAYER_ID = 'wind-layer'
-let lastWindTileUrl = ''
+// --- 风力粒子图层 ---
+let windParticleLayer: WindParticleLayer | null = null
+let windLayerGen = 0
 
-function updateWindLayer() {
+async function updateWindLayer() {
+  const gen = ++windLayerGen
+
   if (!map || !map.isStyleLoaded())
     return
 
-  if (!timelineStore.showWind || !props.selectedTimestamp) {
-    timelineStore.currentWindTimestamp = null
-    if (map.getLayer(WIND_LAYER_ID))
-      map.removeLayer(WIND_LAYER_ID)
-    if (map.getSource(WIND_SOURCE_ID))
-      map.removeSource(WIND_SOURCE_ID)
-    lastWindTileUrl = ''
+  if (!timelineStore.showWind) {
+    destroyWindLayer()
     return
   }
 
-  const level = timelineStore.selectedWindLevel
-  const windTs = timelineStore.getClosestWindTimestamp(level, props.selectedTimestamp)
+  await timelineStore.fetchWindManifests(props.serverUrl)
+  if (gen !== windLayerGen) return
+
+  const windTs = timelineStore.selectedWindTimestamp
   if (!windTs) {
-    timelineStore.currentWindTimestamp = null
-    if (map.getLayer(WIND_LAYER_ID))
-      map.removeLayer(WIND_LAYER_ID)
-    if (map.getSource(WIND_SOURCE_ID))
-      map.removeSource(WIND_SOURCE_ID)
-    lastWindTileUrl = ''
+    destroyWindLayer()
     return
   }
 
-  timelineStore.currentWindTimestamp = windTs
-  const tileUrl = `${props.serverUrl}/wind-tiles/${level}/{z}/{x}` + `/{y}/${windTs}.png`
-
-  // URL 未变则跳过
-  if (tileUrl === lastWindTileUrl)
-    return
-
-  // 移除旧图层
-  if (map.getLayer(WIND_LAYER_ID))
-    map.removeLayer(WIND_LAYER_ID)
-  if (map.getSource(WIND_SOURCE_ID))
-    map.removeSource(WIND_SOURCE_ID)
-
-  lastWindTileUrl = tileUrl
-
-  map.addSource(WIND_SOURCE_ID, {
-    type: 'raster',
-    tiles: [tileUrl],
-    tileSize: 256,
-    minzoom: 3,
-    maxzoom: 8,
-  })
-
-  map.addLayer({
-    id: WIND_LAYER_ID,
-    type: 'raster',
-    source: WIND_SOURCE_ID,
-    paint: {
-      'raster-opacity': 0.85,
-    },
-  }, 'country-boundaries-outline-layer')
-
-  // 确保火烧云在风力图层之上
-  if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
-    map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
+  try {
+    const url = `${props.serverUrl}/wind-tiles/850hPa/particle/${windTs}.json`
+    const data = await $fetch<WindData>(url)
+    if (gen !== windLayerGen) return
+    destroyWindLayer()
+    windParticleLayer = new WindParticleLayer(map, data, timelineStore.windOptions)
+  }
+  catch (e) {
+    console.error('加载风力粒子数据失败:', e)
+  }
 }
 
-watch(() => props.selectedTimestamp, () => updateWindLayer())
+function destroyWindLayer() {
+  if (windParticleLayer) {
+    windParticleLayer.destroy()
+    windParticleLayer = null
+  }
+}
+
 watch(() => timelineStore.showWind, () => updateWindLayer())
-watch(() => timelineStore.selectedWindLevel, () => { lastWindTileUrl = ''; updateWindLayer() })
-watch(() => timelineStore.windManifests, () => updateWindLayer(), { deep: true })
+watch(() => timelineStore.selectedWindTimestamp, () => updateWindLayer())
+watch(() => timelineStore.windOptions, (opts) => {
+  windParticleLayer?.updateOptions(opts)
+}, { deep: true })
 
 /**
  * 贴图网格调试：显示当前视口内每个贴图的边界、x/y/z 坐标和卫星 ID
@@ -794,11 +782,6 @@ function updateSatelliteLayer(timestamp: number): Promise<void> {
     // 确保火烧云图层始终在卫星云图之上
     if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
       map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
-    // 确保风力图层在卫星云图之上
-    if (map.getLayer(WIND_LAYER_ID))
-      map.moveLayer(WIND_LAYER_ID, 'country-boundaries-outline-layer')
-    if (map.getLayer(CHROMATIC_SKY_LAYER_ID))
-      map.moveLayer(CHROMATIC_SKY_LAYER_ID, 'country-boundaries-outline-layer')
 
     // 等待第一个卫星源加载完成后清理旧图层
     const onSourceData = (e: any) => {
@@ -828,6 +811,7 @@ watch(() => timelineStore.mapProjection, (newProjection) => {
 
 onUnmounted(() => {
   closeGlowIndexPopup()
+  destroyWindLayer()
   if (map) {
     map.remove()
   }
@@ -858,7 +842,7 @@ defineExpose({
   background: #1e1e1e;
   border-radius: 8px;
   padding: 0;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
 }
 :deep(.glow-index-popup .maplibregl-popup-tip) {
   border-top-color: #1e1e1e;

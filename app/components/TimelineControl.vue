@@ -109,25 +109,6 @@ function onWheel(e: WheelEvent) {
 }
 
 // 刻度计算
-const windMarkers = computed(() => {
-  if (!timelineStore.showWind || !virtualTime.value)
-    return []
-  const windTs = timelineStore.getAvailableWindTimestamps(timelineStore.selectedWindLevel)
-  const halfSpan = (rulerWidth / 2) / PX_PER_SECOND
-  const start = virtualTime.value - halfSpan
-  const end = virtualTime.value + halfSpan
-  return windTs
-    .filter(ts => ts >= start && ts <= end)
-    .map((ts) => {
-      const x = (ts - virtualTime.value) * PX_PER_SECOND
-      return { ts, x }
-    })
-})
-
-function onWindMarkerClick(ts: number) {
-  timelineStore.jumpToTimestamp(ts)
-}
-
 const ticks = computed(() => {
   if (!virtualTime.value)
     return []
@@ -237,18 +218,6 @@ const ticks = computed(() => {
                   'h-4 bg-gray-400': tick.type === 'hour',
                   'h-2 bg-gray-600': tick.type === 'minute',
                 }"
-              />
-            </div>
-            <!-- 风力时间标记 -->
-            <div
-              v-for="marker in windMarkers" :key="`wind-${marker.ts}`"
-              class="bottom-0 left-1/2 absolute pointer-events-auto cursor-pointer z-20"
-              :style="{ transform: `translateX(${marker.x}px)` }"
-              @pointerdown.stop="onWindMarkerClick(marker.ts)"
-            >
-              <div
-                class="w-1.5 rounded-full"
-                :class="timelineStore.currentWindTimestamp === marker.ts ? 'bg-sky-400 h-3' : 'bg-emerald-400/80 h-2'"
               />
             </div>
           </div>

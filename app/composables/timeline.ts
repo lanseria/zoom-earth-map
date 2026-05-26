@@ -16,19 +16,7 @@ export type TimelineControlStyle = 'classic' | 'ruler'
 
 export interface ChromaticSkyResource { date: string, event: string }
 
-// --- 风力等压面层定义 ---
-export const WIND_LEVELS = [
-  { id: '1000hPa', label: '1000 hPa', altitude: '~100 m' },
-  { id: '850hPa', label: '850 hPa', altitude: '~1,500 m' },
-  { id: '700hPa', label: '700 hPa', altitude: '~3,000 m' },
-  { id: '500hPa', label: '500 hPa', altitude: '~5,500 m' },
-  { id: '300hPa', label: '300 hPa', altitude: '~9,000 m' },
-  { id: '250hPa', label: '250 hPa', altitude: '~10,000 m' },
-  { id: '200hPa', label: '200 hPa', altitude: '~12,000 m' },
-  { id: '100hPa', label: '100 hPa', altitude: '~16,000 m' },
-]
-
-
+const WIND_LEVEL = '850hPa'
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
@@ -60,9 +48,23 @@ export const useTimelineStore = defineStore('timeline', () => {
   const showChromaticSky = useLocalStorage<boolean>('ze-show-chromatic-sky', true)
   // --- 风力图层 ---
   const showWind = useLocalStorage<boolean>('ze-show-wind', false)
-  const selectedWindLevel = useLocalStorage<string>('ze-selected-wind-level', '850hPa')
-  const windManifests = ref<Record<string, number[]>>({})
-  const currentWindTimestamp = ref<number | null>(null)
+  const windTimestamps = ref<number[]>([])
+  const selectedWindTimestamp = ref<number | null>(null)
+  const windOptions = useLocalStorage<{
+    velocityScale: number
+    fadeOpacity: number
+    particleCount: number
+    lineWidth: number
+    maxAge: number
+    colorBySpeed: boolean
+  }>('ze-wind-options', () => ({
+    velocityScale: 0.001,
+    fadeOpacity: 0.80,
+    particleCount: 20000,
+    lineWidth: 2,
+    maxAge: 200,
+    colorBySpeed: false,
+  }))
 
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
@@ -183,48 +185,41 @@ export const useTimelineStore = defineStore('timeline', () => {
   }
 
   // --- 风力图层 Actions ---
-  async function fetchWindManifests() {
-    const runtimeConfig = useRuntimeConfig()
-    const baseUrl = runtimeConfig.public.gisServerUrl as string
-    for (const level of WIND_LEVELS) {
-      if (windManifests.value[level.id])
-        continue
+  let windFetchPromise: Promise<void> | null = null
+
+  async function fetchWindTimestamps(baseUrl?: string) {
+    if (windFetchPromise)
+      return windFetchPromise
+    windFetchPromise = (async () => {
+      const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
       try {
-        const response = await $fetch<{ timestamps: number[] }>(`${baseUrl}/wind-tiles/${level.id}/tiles_manifest.json`)
-        windManifests.value[level.id] = response.timestamps ?? []
+        const response = await $fetch<{ timestamps: number[] }>(`${url}/wind-tiles/${WIND_LEVEL}/tiles_manifest.json`)
+        const ts = response.timestamps ?? []
+        if (ts.length > 0) {
+          windTimestamps.value = [...ts].sort((a, b) => a - b)
+          if (!windTimestamps.value.includes(selectedWindTimestamp.value ?? 0)) {
+            const sat = selectedTimestamp.value ?? windTimestamps.value[windTimestamps.value.length - 1]!
+            let closest = windTimestamps.value[windTimestamps.value.length - 1]!
+            let minDiff = Infinity
+            for (const t of windTimestamps.value) {
+              const diff = Math.abs(t - sat)
+              if (diff < minDiff) {
+                minDiff = diff
+                closest = t
+              }
+            }
+            selectedWindTimestamp.value = closest
+          }
+        }
       }
       catch (e) {
-        console.error(`加载风力清单失败 (${level.id}):`, e)
+        console.error('加载风力清单失败:', e)
       }
-    }
-  }
-
-  function getClosestWindTimestamp(levelId: string, satelliteTimestamp: number): number | null {
-    const tsList = windManifests.value[levelId]
-    if (!tsList || tsList.length === 0)
-      return null
-    const sorted = [...tsList].sort((a, b) => a - b)
-    if (sorted[0]! > satelliteTimestamp)
-      return null
-    for (let i = sorted.length - 1; i >= 0; i--) {
-      if (sorted[i]! <= satelliteTimestamp)
-        return sorted[i]!
-    }
-    return null
-  }
-
-  function jumpToTimestamp(ts: number) {
-    const idx = timestamps.value.indexOf(ts)
-    if (idx !== -1)
-      currentTimestampIndex.value = idx
-  }
-
-  function getAvailableWindTimestamps(levelId: string): number[] {
-    const windTs = windManifests.value[levelId]
-    if (!windTs || windTs.length === 0)
-      return []
-    const satSet = new Set(timestamps.value)
-    return windTs.filter(ts => satSet.has(ts))
+      finally {
+        windFetchPromise = null
+      }
+    })()
+    return windFetchPromise
   }
 
   /**
@@ -418,9 +413,9 @@ export const useTimelineStore = defineStore('timeline', () => {
     chromaticSkySelection,
     showChromaticSky,
     showWind,
-    selectedWindLevel,
-    windManifests,
-    currentWindTimestamp,
+    windTimestamps,
+    selectedWindTimestamp,
+    windOptions,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -444,10 +439,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     findClosestTimestampIndex,
     fetchChromaticSkyManifest,
     setChromaticSkySelection,
-    fetchWindManifests,
-    getClosestWindTimestamp,
-    jumpToTimestamp,
-    getAvailableWindTimestamps,
+    fetchWindManifests: fetchWindTimestamps,
   }
 })
 
