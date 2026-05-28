@@ -6,6 +6,5 @@ dist
 .nuxt
 .env
 .idea/
-public/assets/fonts
-ai/project_context.txt
+public/assets/
 ai/project_context.xml

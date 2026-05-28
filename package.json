@@ -11,7 +11,8 @@
     "start": "node .output/server/index.mjs",
     "start:generate": "npx serve .output/public",
     "lint": "eslint .",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "postinstall": "node scripts/download-assets.mjs"
   },
   "devDependencies": {
     "@antfu/eslint-config": "catalog:dev",

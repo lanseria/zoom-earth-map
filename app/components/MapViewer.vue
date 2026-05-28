@@ -340,7 +340,7 @@ async function addCityMarkersLayerWithZoomLevels() {
 }
 
 /**
- * 添加本地 GeoJSON 国界线图层
+ * 添加本地 GeoJSON 国界线图层 + 全球陆地线图层
  */
 async function addBoundaryLayer() {
   try {
@@ -376,6 +376,24 @@ async function addBoundaryLayer() {
         'line-opacity': 0.8,
       },
     })
+
+    // 3. 全球陆地线
+    map.addSource('global-land-source', {
+      type: 'geojson',
+      data: '/assets/ne_50m_land.geojson',
+    })
+
+    map.addLayer({
+      id: 'global-land-outline-layer',
+      type: 'line',
+      source: 'global-land-source',
+      layout: { visibility: initialVisibility },
+      paint: {
+        'line-color': '#eeeeee',
+        'line-width': 2,
+        'line-opacity': 0.5,
+      },
+    })
   }
   catch (error) {
     console.error('加载本地 GeoJSON 失败:', error)
@@ -400,7 +418,7 @@ watch(() => timelineStore.showBoundaries, (isVisible) => {
   if (!map)
     return
   const visibility = isVisible ? 'visible' : 'none'
-  const layerIds = ['country-boundaries-outline-layer', 'country-boundaries-layer']
+  const layerIds = ['country-boundaries-outline-layer', 'country-boundaries-layer', 'global-land-outline-layer', 'global-land-layer']
   layerIds.forEach((id) => {
     if (map.getLayer(id))
       map.setLayoutProperty(id, 'visibility', visibility)
@@ -565,7 +583,8 @@ async function updateWindLayer() {
   }
 
   await timelineStore.fetchWindManifests(props.serverUrl)
-  if (gen !== windLayerGen) return
+  if (gen !== windLayerGen)
+    return
 
   const windTs = timelineStore.selectedWindTimestamp
   if (!windTs) {
@@ -576,7 +595,8 @@ async function updateWindLayer() {
   try {
     const url = `${props.serverUrl}/wind-tiles/850hPa/particle/${windTs}.json`
     const data = await $fetch<WindData>(url)
-    if (gen !== windLayerGen) return
+    if (gen !== windLayerGen)
+      return
     destroyWindLayer()
     windParticleLayer = new WindParticleLayer(map, data, timelineStore.windOptions)
   }
