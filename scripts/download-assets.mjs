@@ -3,8 +3,8 @@ import { dirname } from 'node:path'
 
 const assets = [
   {
-    url: 'https://ghfast.top/https://raw.githubusercontent.com/nvkelso/natural-earth-vector/refs/heads/master/geojson/ne_50m_land.geojson',
-    dest: 'public/assets/ne_50m_land.geojson',
+    url: 'https://ghfast.top/https://raw.githubusercontent.com/Supeset/China-GeoData/main/geojson/ne_50m_coastline_without_china.geojson',
+    dest: 'public/assets/ne_50m_coastline_without_china.geojson',
   },
 ]
 

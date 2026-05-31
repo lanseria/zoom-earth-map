@@ -377,16 +377,16 @@ async function addBoundaryLayer() {
       },
     })
 
-    // 3. 全球陆地线
-    map.addSource('global-land-source', {
+    // 3. 全球海岸线（不含中国）
+    map.addSource('global-coastline-source', {
       type: 'geojson',
-      data: '/assets/ne_50m_land.geojson',
+      data: '/assets/ne_50m_coastline_without_china.geojson',
     })
 
     map.addLayer({
-      id: 'global-land-outline-layer',
+      id: 'global-coastline-layer',
       type: 'line',
-      source: 'global-land-source',
+      source: 'global-coastline-source',
       layout: { visibility: initialVisibility },
       paint: {
         'line-color': '#eeeeee',
