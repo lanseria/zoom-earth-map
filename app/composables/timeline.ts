@@ -60,7 +60,7 @@ export const useTimelineStore = defineStore('timeline', () => {
   }>('ze-wind-options', () => ({
     velocityScale: 0.001,
     fadeOpacity: 0.80,
-    particleCount: 20000,
+    particleCount: 12000,
     lineWidth: 2,
     maxAge: 200,
     colorBySpeed: false,

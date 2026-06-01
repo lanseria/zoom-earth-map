@@ -71,6 +71,7 @@ export class WindParticleLayer {
   private colorScale: string[]
   private colorBySpeed: boolean
   private _visible = true
+  private _moving = false
 
   constructor(map: maplibregl.Map, data: WindData, opts: WindOptions = {}) {
     this.map = map
@@ -99,6 +100,8 @@ export class WindParticleLayer {
     this.start()
 
     this.map.on('resize', this.resize)
+    this.map.on('movestart', this.onMoveStart)
+    this.map.on('moveend', this.onMoveEnd)
   }
 
   private resize = () => {
@@ -109,10 +112,25 @@ export class WindParticleLayer {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   }
 
+  private getVisibleGridBounds() {
+    const bounds = this.map.getBounds()
+    const sw = bounds.getSouthWest()
+    const ne = bounds.getNorthEast()
+    const gridSpanX = (this.nx - 1) * this.dx
+    const gridSpanY = (this.ny - 1) * this.dy
+    return {
+      gxMin: Math.max(0, (sw.lng - this.lo1) / gridSpanX),
+      gxMax: Math.min(1, (ne.lng - this.lo1) / gridSpanX),
+      gyMin: Math.max(0, (this.la1 - ne.lat) / gridSpanY),
+      gyMax: Math.min(1, (this.la1 - sw.lat) / gridSpanY),
+    }
+  }
+
   private resetParticles() {
+    const { gxMin, gxMax, gyMin, gyMax } = this.getVisibleGridBounds()
     for (let i = 0; i < this.count; i++) {
-      this.px[i] = Math.random()
-      this.py[i] = Math.random()
+      this.px[i] = gxMin + Math.random() * (gxMax - gxMin)
+      this.py[i] = gyMin + Math.random() * (gyMax - gyMin)
       this.pAge[i] = Math.floor(Math.random() * this.maxAge)
     }
   }
@@ -169,8 +187,21 @@ export class WindParticleLayer {
     return this.colorScale[idx] ?? this.colorScale[0]!
   }
 
+  private onMoveStart = () => {
+    this._moving = true
+    const rect = this.map.getContainer().getBoundingClientRect()
+    this.ctx.clearRect(0, 0, rect.width, rect.height)
+  }
+
+  private onMoveEnd = () => {
+    this._moving = false
+    this.resetParticles()
+    const rect = this.map.getContainer().getBoundingClientRect()
+    this.ctx.clearRect(0, 0, rect.width, rect.height)
+  }
+
   private frame = () => {
-    if (!this._visible) {
+    if (!this._visible || this._moving) {
       this.animId = requestAnimationFrame(this.frame)
       return
     }
@@ -184,10 +215,10 @@ export class WindParticleLayer {
     this.ctx.fillRect(0, 0, w, h)
     this.ctx.globalCompositeOperation = 'source-over'
 
-    const zoom = this.map.getZoom()
-    const vScale = this.velocityScale * 2 ** (zoom - 4)
+    const vScale = this.velocityScale * 2 ** (5 - 4)
     const gridSpanX = (this.nx - 1) * this.dx
     const gridSpanY = (this.ny - 1) * this.dy
+    const { gxMin, gxMax, gyMin, gyMax } = this.getVisibleGridBounds()
 
     this.ctx.lineWidth = this.lineWidth
 
@@ -209,9 +240,9 @@ export class WindParticleLayer {
       this.py[i] = ngy
       this.pAge[i] = (this.pAge[i] ?? 0) + 1
 
-      if (ngx < 0 || ngx > 1 || ngy < 0 || ngy > 1 || this.pAge[i]! > this.maxAge) {
-        this.px[i] = Math.random()
-        this.py[i] = Math.random()
+      if (ngx < gxMin || ngx > gxMax || ngy < gyMin || ngy > gyMax || this.pAge[i]! > this.maxAge) {
+        this.px[i] = gxMin + Math.random() * (gxMax - gxMin)
+        this.py[i] = gyMin + Math.random() * (gyMax - gyMin)
         this.pAge[i] = 0
         continue
       }
@@ -267,6 +298,8 @@ export class WindParticleLayer {
       this.animId = null
     }
     this.map.off('resize', this.resize)
+    this.map.off('movestart', this.onMoveStart)
+    this.map.off('moveend', this.onMoveEnd)
     this.canvas.remove()
   }
 }

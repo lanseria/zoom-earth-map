@@ -132,9 +132,9 @@ const opts = computed(() => timelineStore.windOptions)
                 <input
                   v-model.number="opts.particleCount"
                   type="range"
-                  min="2000"
-                  max="30000"
-                  step="1000"
+                  min="500"
+                  max="15000"
+                  step="500"
                   class="wind-slider"
                 >
               </div>
