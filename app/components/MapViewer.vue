@@ -112,7 +112,10 @@ onMounted(() => {
       map.setProjection({ type: 'globe' })
     // 初始化贴图网格
     tileGridUpdate()
+    onMapZoom()
   })
+
+  map.on('zoomend', onMapZoom)
 
   map.on('error', (e) => {
     if (e && e.error)
@@ -617,6 +620,11 @@ watch(() => timelineStore.selectedWindTimestamp, () => updateWindLayer())
 watch(() => timelineStore.windOptions, (opts) => {
   windParticleLayer?.updateOptions(opts)
 }, { deep: true })
+
+function onMapZoom() {
+  if (map)
+    timelineStore.windCurrentZoom = Math.round(map.getZoom())
+}
 
 /**
  * 贴图网格调试：显示当前视口内每个贴图的边界、x/y/z 坐标和卫星 ID

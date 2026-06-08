@@ -50,20 +50,13 @@ export const useTimelineStore = defineStore('timeline', () => {
   const showWind = useLocalStorage<boolean>('ze-show-wind', false)
   const windTimestamps = ref<number[]>([])
   const selectedWindTimestamp = ref<number | null>(null)
+  const windCurrentZoom = ref(5)
   const windOptions = useLocalStorage<{
-    velocityScale: number
-    fadeOpacity: number
-    particleCount: number
-    lineWidth: number
-    maxAge: number
     colorBySpeed: boolean
+    zoomParams: Record<number, { velocityScale: number, fadeOpacity: number, particleCount: number }>
   }>('ze-wind-options', () => ({
-    velocityScale: 0.001,
-    fadeOpacity: 0.80,
-    particleCount: 12000,
-    lineWidth: 2,
-    maxAge: 200,
     colorBySpeed: false,
+    zoomParams: {},
   }))
 
   const isPreloading = ref(false)
@@ -415,6 +408,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     showWind,
     windTimestamps,
     selectedWindTimestamp,
+    windCurrentZoom,
     windOptions,
     // Getters
     selectedTimestamp,

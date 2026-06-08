@@ -25,7 +25,43 @@ function togglePanel() {
     timelineStore.fetchWindManifests()
 }
 
-const opts = computed(() => timelineStore.windOptions)
+const editZoom = computed({
+  get: () => Math.min(timelineStore.windCurrentZoom, 8),
+  set: () => {},
+})
+
+const DEFAULTS = { velocityScale: 0.001, fadeOpacity: 0.80, particleCount: 12000 }
+
+function getParam(key: keyof typeof DEFAULTS) {
+  return timelineStore.windOptions.zoomParams?.[editZoom.value]?.[key] ?? DEFAULTS[key]
+}
+
+function setParam(key: keyof typeof DEFAULTS, val: number) {
+  const store = timelineStore.windOptions
+  if (!store.zoomParams)
+    store.zoomParams = {}
+  if (!store.zoomParams[editZoom.value])
+    store.zoomParams[editZoom.value] = { ...DEFAULTS }
+  store.zoomParams[editZoom.value]![key] = val
+}
+
+const velocityScale = computed({
+  get: () => getParam('velocityScale'),
+  set: v => setParam('velocityScale', v),
+})
+const fadeOpacity = computed({
+  get: () => getParam('fadeOpacity'),
+  set: v => setParam('fadeOpacity', v),
+})
+const particleCount = computed({
+  get: () => getParam('particleCount'),
+  set: v => setParam('particleCount', v),
+})
+
+const colorBySpeed = computed({
+  get: () => timelineStore.windOptions.colorBySpeed ?? false,
+  set: v => timelineStore.windOptions.colorBySpeed = v,
+})
 </script>
 
 <template>
@@ -91,18 +127,35 @@ const opts = computed(() => timelineStore.windOptions)
                 粒子参数
               </div>
 
+              <!-- 缩放级别选择 -->
+              <div>
+                <div class="text-xs mb-1 flex justify-between">
+                  <span class="text-gray-300">缩放级别</span>
+                  <span class="text-gray-400">zoom {{ editZoom }}</span>
+                </div>
+                <div class="flex gap-1 flex-wrap">
+                  <span
+                    v-for="z in 8" :key="z"
+                    class="text-xs px-1.5 py-0.5 rounded"
+                    :class="editZoom === z ? 'bg-sky-600 text-white' : 'bg-white/10 text-gray-400'"
+                  >
+                    {{ z }}
+                  </span>
+                </div>
+              </div>
+
               <!-- 流动速度 -->
               <div>
                 <div class="text-xs mb-1 flex justify-between">
                   <span class="text-gray-300">流动速度</span>
-                  <span class="text-gray-400">{{ opts.velocityScale.toFixed(3) }}</span>
+                  <span class="text-gray-400">{{ velocityScale.toFixed(4) }}</span>
                 </div>
                 <input
-                  v-model.number="opts.velocityScale"
+                  v-model.number="velocityScale"
                   type="range"
-                  min="0.001"
+                  min="0.0001"
                   max="0.01"
-                  step="0.001"
+                  step="0.0001"
                   class="wind-slider"
                 >
               </div>
@@ -111,12 +164,12 @@ const opts = computed(() => timelineStore.windOptions)
               <div>
                 <div class="text-xs mb-1 flex justify-between">
                   <span class="text-gray-300">拖尾长度</span>
-                  <span class="text-gray-400">{{ opts.fadeOpacity.toFixed(2) }}</span>
+                  <span class="text-gray-400">{{ fadeOpacity.toFixed(2) }}</span>
                 </div>
                 <input
-                  v-model.number="opts.fadeOpacity"
+                  v-model.number="fadeOpacity"
                   type="range"
-                  min="0.75"
+                  min="0.10"
                   max="0.99"
                   step="0.01"
                   class="wind-slider"
@@ -127,46 +180,14 @@ const opts = computed(() => timelineStore.windOptions)
               <div>
                 <div class="text-xs mb-1 flex justify-between">
                   <span class="text-gray-300">粒子密度</span>
-                  <span class="text-gray-400">{{ opts.particleCount.toLocaleString() }}</span>
+                  <span class="text-gray-400">{{ particleCount.toLocaleString() }}</span>
                 </div>
                 <input
-                  v-model.number="opts.particleCount"
+                  v-model.number="particleCount"
                   type="range"
                   min="500"
-                  max="15000"
+                  max="50000"
                   step="500"
-                  class="wind-slider"
-                >
-              </div>
-
-              <!-- 线条粗细 -->
-              <div>
-                <div class="text-xs mb-1 flex justify-between">
-                  <span class="text-gray-300">线条粗细</span>
-                  <span class="text-gray-400">{{ opts.lineWidth.toFixed(1) }} px</span>
-                </div>
-                <input
-                  v-model.number="opts.lineWidth"
-                  type="range"
-                  min="0.5"
-                  max="5"
-                  step="0.5"
-                  class="wind-slider"
-                >
-              </div>
-
-              <!-- 粒子寿命 -->
-              <div>
-                <div class="text-xs mb-1 flex justify-between">
-                  <span class="text-gray-300">粒子寿命</span>
-                  <span class="text-gray-400">{{ opts.maxAge }}</span>
-                </div>
-                <input
-                  v-model.number="opts.maxAge"
-                  type="range"
-                  min="10"
-                  max="200"
-                  step="10"
                   class="wind-slider"
                 >
               </div>
@@ -176,12 +197,12 @@ const opts = computed(() => timelineStore.windOptions)
                 <span class="text-xs text-gray-300">风速着色</span>
                 <button
                   class="p-1 rounded-full h-5 w-10 transition-colors duration-300"
-                  :class="opts.colorBySpeed ? 'bg-sky-600' : 'bg-gray-600'"
-                  @click="opts.colorBySpeed = !opts.colorBySpeed"
+                  :class="colorBySpeed ? 'bg-sky-600' : 'bg-gray-600'"
+                  @click="colorBySpeed = !colorBySpeed"
                 >
                   <span
                     class="rounded-full bg-white h-3 w-3 block shadow transform transition-transform duration-300"
-                    :class="{ 'translate-x-5': opts.colorBySpeed }"
+                    :class="{ 'translate-x-5': colorBySpeed }"
                   />
                 </button>
               </div>

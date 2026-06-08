@@ -21,15 +21,25 @@ export interface WindDataItem {
 
 export type WindData = [WindDataItem, WindDataItem]
 
+export interface ZoomParams {
+  velocityScale: number
+  fadeOpacity: number
+  particleCount: number
+}
+
 export interface WindOptions {
-  particleCount?: number
-  velocityScale?: number
-  maxAge?: number
-  lineWidth?: number
-  fadeOpacity?: number
   colorScale?: string[]
   colorBySpeed?: boolean
+  zoomParams?: Record<number, Partial<ZoomParams>>
 }
+
+const DEFAULT_ZOOM_PARAMS: ZoomParams = {
+  velocityScale: 0.001,
+  fadeOpacity: 0.80,
+  particleCount: 12000,
+}
+const MAX_AGE = 200
+const LINE_WIDTH = 2
 
 const DEFAULT_COLORS = [
   '#043b6e',
@@ -64,24 +74,22 @@ export class WindParticleLayer {
   private pAge: Int32Array
   private count: number
 
-  private velocityScale: number
-  private maxAge: number
-  private lineWidth: number
-  private fadeOpacity: number
+  private velocityScale = DEFAULT_ZOOM_PARAMS.velocityScale
+  private maxAge = MAX_AGE
+  private lineWidth = LINE_WIDTH
+  private fadeOpacity = DEFAULT_ZOOM_PARAMS.fadeOpacity
   private colorScale: string[]
   private colorBySpeed: boolean
+  private zoomOverrides: Record<number, Partial<ZoomParams>>
   private _visible = true
   private _moving = false
 
   constructor(map: maplibregl.Map, data: WindData, opts: WindOptions = {}) {
     this.map = map
-    this.count = opts.particleCount ?? 8000
-    this.velocityScale = opts.velocityScale ?? 1 / 25
-    this.maxAge = opts.maxAge ?? 90
-    this.lineWidth = opts.lineWidth ?? 1.5
-    this.fadeOpacity = opts.fadeOpacity ?? 0.96
+    this.count = DEFAULT_ZOOM_PARAMS.particleCount
     this.colorScale = opts.colorScale ?? DEFAULT_COLORS
     this.colorBySpeed = opts.colorBySpeed ?? false
+    this.zoomOverrides = opts.zoomParams ?? {}
 
     this.px = new Float32Array(this.count)
     this.py = new Float32Array(this.count)
@@ -96,12 +104,13 @@ export class WindParticleLayer {
 
     this.ctx = this.canvas.getContext('2d')!
     this.resize()
-    this.resetParticles()
+    this.updateZoomParams()
     this.start()
 
     this.map.on('resize', this.resize)
     this.map.on('movestart', this.onMoveStart)
     this.map.on('moveend', this.onMoveEnd)
+    this.map.on('zoomend', this.onZoomEnd)
   }
 
   private resize = () => {
@@ -200,6 +209,29 @@ export class WindParticleLayer {
     this.ctx.clearRect(0, 0, rect.width, rect.height)
   }
 
+  private onZoomEnd = () => {
+    this.updateZoomParams()
+    const rect = this.map.getContainer().getBoundingClientRect()
+    this.ctx.clearRect(0, 0, rect.width, rect.height)
+  }
+
+  private updateZoomParams() {
+    const z = Math.round(this.map.getZoom())
+    const ovr = this.zoomOverrides[z]
+
+    this.velocityScale = ovr?.velocityScale ?? DEFAULT_ZOOM_PARAMS.velocityScale
+    this.fadeOpacity = ovr?.fadeOpacity ?? DEFAULT_ZOOM_PARAMS.fadeOpacity
+
+    const newCount = ovr?.particleCount ?? DEFAULT_ZOOM_PARAMS.particleCount
+    if (newCount !== this.count) {
+      this.count = newCount
+      this.px = new Float32Array(this.count)
+      this.py = new Float32Array(this.count)
+      this.pAge = new Int32Array(this.count)
+      this.resetParticles()
+    }
+  }
+
   private frame = () => {
     if (!this._visible || this._moving) {
       this.animId = requestAnimationFrame(this.frame)
@@ -215,7 +247,7 @@ export class WindParticleLayer {
     this.ctx.fillRect(0, 0, w, h)
     this.ctx.globalCompositeOperation = 'source-over'
 
-    const vScale = this.velocityScale * 2 ** (5 - 4)
+    const vScale = this.velocityScale
     const gridSpanX = (this.nx - 1) * this.dx
     const gridSpanY = (this.ny - 1) * this.dy
     const { gxMin, gxMax, gyMin, gyMax } = this.getVisibleGridBounds()
@@ -273,23 +305,11 @@ export class WindParticleLayer {
   }
 
   updateOptions(opts: Partial<WindOptions>) {
-    if (opts.velocityScale !== undefined)
-      this.velocityScale = opts.velocityScale
-    if (opts.maxAge !== undefined)
-      this.maxAge = opts.maxAge
-    if (opts.fadeOpacity !== undefined)
-      this.fadeOpacity = opts.fadeOpacity
-    if (opts.lineWidth !== undefined)
-      this.lineWidth = opts.lineWidth
-    if (opts.particleCount !== undefined && opts.particleCount !== this.count) {
-      this.count = opts.particleCount
-      this.px = new Float32Array(this.count)
-      this.py = new Float32Array(this.count)
-      this.pAge = new Int32Array(this.count)
-      this.resetParticles()
-    }
     if (opts.colorBySpeed !== undefined)
       this.colorBySpeed = opts.colorBySpeed
+    if (opts.zoomParams !== undefined)
+      this.zoomOverrides = opts.zoomParams
+    this.updateZoomParams()
   }
 
   destroy() {
@@ -300,6 +320,7 @@ export class WindParticleLayer {
     this.map.off('resize', this.resize)
     this.map.off('movestart', this.onMoveStart)
     this.map.off('moveend', this.onMoveEnd)
+    this.map.off('zoomend', this.onZoomEnd)
     this.canvas.remove()
   }
 }
