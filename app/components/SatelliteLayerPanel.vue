@@ -14,7 +14,7 @@ const isPanelOpen = ref(false)
       title="卫星云图"
       @click="isPanelOpen = !isPanelOpen"
     >
-      <div :class="isPanelOpen ? 'i-carbon-close' : 'i-carbon-cloud'" />
+      <div :class="isPanelOpen ? 'i-carbon-close' : 'i-carbon-satellite'" />
     </button>
 
     <!-- 卫星云图面板 -->

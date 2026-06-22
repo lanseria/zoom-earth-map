@@ -38,7 +38,7 @@ onUnmounted(() => {
       <p>{{ timelineStore.statusMessage }}</p>
     </div>
     <!-- UI 覆盖层 -->
-    <div v-if="timelineStore.timestamps.length > 0" class="pointer-events-none inset-0 absolute">
+    <div v-if="timelineStore.timestamps.length > 0" class="pointer-events-none inset-0 absolute z-10">
       <MapHeader />
       <TimelineControl />
       <SettingsPanel />
