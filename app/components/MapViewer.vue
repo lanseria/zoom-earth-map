@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { StormForecastBatch, StormTrack, StormTrackPoint } from '~/composables/timeline'
 import type { BaseMapType } from '~/constants/map'
 import type { WindData } from '~/utils/wind-particles'
 import maplibregl from 'maplibre-gl'
@@ -28,6 +29,70 @@ const timelineStore = useTimelineStore()
 const mapContainer = ref(null)
 let map: maplibregl.Map
 let previousTimestamp: number | null = null
+
+// --- 台风图层配色与样式 ---
+const STORM_COLOR_BY_CODE: Record<string, string> = {
+  D: '#0a84ff', // 热带低压
+  S: '#00f060', // 热带风暴
+  1: '#ffcc00', // 强热带风暴
+  SS: '#ffcc00', // Severe Tropical Storm（强热带风暴）
+  2: '#ff9400', // 台风
+  T: '#ff9400', // Typhoon（台风）
+  3: '#ff5900', // 强台风
+  ST: '#ff5900', // Very Strong Typhoon
+  4: '#ff0022', // 超强台风（暴力台风）
+  VT: '#ff0022', // Violent Typhoon（暴力台风）
+  5: '#ff0022', // Cat 5
+}
+const STORM_COLOR_BY_SOURCE: Record<string, string> = {
+  'zoom-earth': '#00b4d8',
+  'cma': '#f87171',
+  'jma': '#f4845f',
+  'jtwc': '#a3e635',
+  'cwa': '#60a5fa',
+  'hko': '#fbbf24',
+  'kma': '#a78bfa',
+}
+const STORM_ACTUAL_LINE_COLOR = '#fbbf24'
+const STORM_SOURCE_FALLBACK = '#94a3b8'
+// 统一的点位半径
+const STORM_POINT_RADIUS = 5
+const STORM_FORECAST_POINT_RADIUS = 4
+const STORM_ACTIVE_MARKER_RADIUS = 8
+
+function stormSourceColor(source: string) {
+  return STORM_COLOR_BY_SOURCE[source] ?? STORM_SOURCE_FALLBACK
+}
+
+function stormPointColor(code: string) {
+  return STORM_COLOR_BY_CODE[code] ?? STORM_SOURCE_FALLBACK
+}
+
+function formatStormDateBjt(iso: string) {
+  return new Date(iso).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Shanghai',
+  })
+}
+
+// 每个预测 source 取 issued_at 最新的一批
+function pickLatestForecastBatches(forecasts: StormForecastBatch[]): StormForecastBatch[] {
+  const bySource = new Map<string, StormForecastBatch>()
+  for (const b of forecasts) {
+    const cur = bySource.get(b.source)
+    if (!cur || new Date(b.issued_at) > new Date(cur.issued_at))
+      bySource.set(b.source, b)
+  }
+  return [...bySource.values()]
+}
+
+function sortPointsByDate(points: StormTrackPoint[]): StormTrackPoint[] {
+  return [...points].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+}
 
 // --- 贴图网格调试工具 ---
 function lng2tile(lng: number, z: number) {
@@ -107,6 +172,12 @@ onMounted(() => {
       updateSatelliteLayer(props.selectedTimestamp)
     if (timelineStore.showWind)
       updateWindLayer()
+    // 台风图层：首次自动拉取已关注列表，等数据回来后再渲染
+    if (timelineStore.showTyphoon) {
+      updateTyphoonLayers()
+      if (timelineStore.activeStorms.length === 0)
+        timelineStore.fetchActiveStorms().finally(() => updateTyphoonLayers())
+    }
     // 恢复存储的投影设置
     if (timelineStore.mapProjection === 'globe')
       map.setProjection({ type: 'globe' })
@@ -116,6 +187,11 @@ onMounted(() => {
   })
 
   map.on('zoomend', onMapZoom)
+
+  // 台风图层交互事件（一次性挂载）
+  map.on('mousemove', handleStormMouseEnter)
+  map.on('mouseout', handleStormMouseLeave)
+  map.on('click', handleStormClick)
 
   map.on('error', (e) => {
     if (e && e.error)
@@ -532,8 +608,13 @@ async function queryGlowIndex(lng: number, lat: number) {
 }
 
 function updateChromaticSkyLayer() {
-  if (!map || !map.isStyleLoaded())
+  if (!map)
     return
+  // style 还在过渡态时排队等下一个 idle 重试，避免首次刷新漏渲染
+  if (!map.isStyleLoaded()) {
+    map.once('idle', updateChromaticSkyLayer)
+    return
+  }
 
   const sel = timelineStore.chromaticSkySelection
 
@@ -621,6 +702,305 @@ watch(() => timelineStore.windOptions, (opts) => {
   windParticleLayer?.updateOptions(opts)
 }, { deep: true })
 
+// --- 台风图层 ---
+const STORM_LAYER_IDS = [
+  'typhoon-actual-line',
+  'typhoon-actual-points',
+  'typhoon-forecast-line',
+  'typhoon-forecast-points',
+  'typhoon-active-marker',
+]
+const STORM_SOURCE_IDS = [
+  'typhoon-actual-line-source',
+  'typhoon-actual-points-source',
+  'typhoon-forecast-line-source',
+  'typhoon-forecast-points-source',
+  'typhoon-active-marker-source',
+]
+let stormPopup: maplibregl.Popup | null = null
+
+function removeTyphoonLayers() {
+  if (!map)
+    return
+  for (const id of STORM_LAYER_IDS) {
+    if (map.getLayer(id))
+      map.removeLayer(id)
+  }
+  for (const id of STORM_SOURCE_IDS) {
+    if (map.getSource(id))
+      map.removeSource(id)
+  }
+  if (stormPopup) {
+    stormPopup.remove()
+    stormPopup = null
+  }
+}
+
+function buildStormGeoJSON() {
+  const visibleStorms = timelineStore.activeStorms
+    .filter(s => s.kind === 'storm'
+      && (timelineStore.stormVisibility[s.id] ?? true)
+      && timelineStore.stormTracks[s.id])
+
+  const actualLineFeatures: any[] = []
+  const actualPointFeatures: any[] = []
+  const forecastLineFeatures: any[] = []
+  const forecastPointFeatures: any[] = []
+  const activeMarkerFeatures: any[] = []
+
+  for (const storm of visibleStorms) {
+    const track = timelineStore.stormTracks[storm.id]!
+    const name = track.info.name
+    const history = sortPointsByDate(track.track_history)
+    // 实况线
+    if (history.length >= 2) {
+      actualLineFeatures.push({
+        type: 'Feature',
+        properties: { storm_id: storm.id, name, kind: 'actual' },
+        geometry: { type: 'LineString', coordinates: history.map(p => [p.lng, p.lat]) },
+      })
+    }
+    // 实况点
+    for (const p of history) {
+      actualPointFeatures.push({
+        type: 'Feature',
+        properties: {
+          storm_id: storm.id,
+          name,
+          date: p.date,
+          wind: p.wind,
+          pressure: p.pressure,
+          code: p.code,
+          description: p.description,
+          source: p.source ?? 'zoom-earth',
+          kind: 'actual',
+        },
+        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+      })
+    }
+    // 最新实况点 → active marker
+    const latest = history.at(-1)
+    if (latest) {
+      activeMarkerFeatures.push({
+        type: 'Feature',
+        properties: {
+          storm_id: storm.id,
+          name,
+          date: latest.date,
+          wind: latest.wind,
+          pressure: latest.pressure,
+          code: latest.code,
+          description: latest.description,
+          source: latest.source ?? 'zoom-earth',
+        },
+        geometry: { type: 'Point', coordinates: [latest.lng, latest.lat] },
+      })
+    }
+    // 预测（按 source 取最新一批；仅渲染已开启的预测机构）
+    for (const batch of pickLatestForecastBatches(track.forecasts)) {
+      if (!timelineStore.stormForecastSources[batch.source])
+        continue
+      const sorted = sortPointsByDate(batch.points)
+      if (sorted.length === 0)
+        continue
+      // 把当前最新实况点接到预测线开头，避免预测线和实况断开
+      const lineCoords: number[][] = []
+      if (latest)
+        lineCoords.push([latest.lng, latest.lat])
+      for (const p of sorted)
+        lineCoords.push([p.lng, p.lat])
+      if (lineCoords.length >= 2) {
+        forecastLineFeatures.push({
+          type: 'Feature',
+          properties: {
+            storm_id: storm.id,
+            name,
+            source: batch.source,
+            issued_at: batch.issued_at,
+            kind: 'forecast',
+          },
+          geometry: { type: 'LineString', coordinates: lineCoords },
+        })
+      }
+      for (const p of sorted) {
+        forecastPointFeatures.push({
+          type: 'Feature',
+          properties: {
+            storm_id: storm.id,
+            name,
+            date: p.date,
+            wind: p.wind,
+            pressure: p.pressure,
+            code: p.code,
+            description: p.description,
+            source: batch.source,
+            issued_at: batch.issued_at,
+            kind: 'forecast',
+          },
+          geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+        })
+      }
+    }
+  }
+
+  return {
+    actualLine: { type: 'FeatureCollection' as const, features: actualLineFeatures },
+    actualPoints: { type: 'FeatureCollection' as const, features: actualPointFeatures },
+    forecastLine: { type: 'FeatureCollection' as const, features: forecastLineFeatures },
+    forecastPoints: { type: 'FeatureCollection' as const, features: forecastPointFeatures },
+    activeMarker: { type: 'FeatureCollection' as const, features: activeMarkerFeatures },
+  }
+}
+
+function stormPointPopupHtml(props: any): string {
+  const windMs = (props.wind * 1.852).toFixed(1)
+  const sourceLabel = props.source ?? 'unknown'
+  const issued = props.issued_at
+    ? `<div style="color:#9ca3af">发布: ${formatStormDateBjt(props.issued_at)} (${props.source})</div>`
+    : `<div style="color:#9ca3af">来源: ${sourceLabel}</div>`
+  return `
+    <div style="font-family: 'DM Sans', sans-serif; min-width: 180px; padding: 4px 2px;">
+      <div style="font-size: 14px; font-weight: 600; color: #fff; margin-bottom: 4px;">${props.name}</div>
+      <div style="font-size: 12px; color: #d1d5db; line-height: 1.6;">
+        <div>时刻: ${formatStormDateBjt(props.date)} BJT</div>
+        <div>位置: ${Number(props.lng ?? 0).toFixed(1)}°E, ${Number(props.lat ?? 0).toFixed(1)}°N</div>
+        <div>风速: ${props.wind} kt (${windMs} m/s)</div>
+        <div>气压: ${props.pressure} hPa</div>
+        <div>等级: ${props.code} - ${props.description}</div>
+        ${issued}
+      </div>
+    </div>
+  `
+}
+
+function updateTyphoonLayers() {
+  if (!map)
+    return
+  // style 还在过渡态时排队等下一个 idle 重试，避免首次刷新漏渲染
+  if (!map.isStyleLoaded()) {
+    map.once('idle', updateTyphoonLayers)
+    return
+  }
+
+  removeTyphoonLayers()
+
+  if (!timelineStore.showTyphoon)
+    return
+
+  const geojson = buildStormGeoJSON()
+
+  // 实况线
+  map.addSource('typhoon-actual-line-source', { type: 'geojson', data: geojson.actualLine as any })
+  map.addLayer({
+    id: 'typhoon-actual-line',
+    type: 'line',
+    source: 'typhoon-actual-line-source',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': STORM_ACTUAL_LINE_COLOR,
+      'line-width': 3,
+      'line-opacity': 0.9,
+    },
+  }, 'country-boundaries-outline-layer')
+
+  // 实况点
+  map.addSource('typhoon-actual-points-source', { type: 'geojson', data: geojson.actualPoints as any })
+  map.addLayer({
+    id: 'typhoon-actual-points',
+    type: 'circle',
+    source: 'typhoon-actual-points-source',
+    paint: {
+      'circle-radius': STORM_POINT_RADIUS,
+      'circle-color': ['match', ['get', 'code'], 'D', STORM_COLOR_BY_CODE.D!, 'S', STORM_COLOR_BY_CODE.S!, '1', STORM_COLOR_BY_CODE['1']!, 'SS', STORM_COLOR_BY_CODE.SS!, '2', STORM_COLOR_BY_CODE['2']!, 'T', STORM_COLOR_BY_CODE.T!, '3', STORM_COLOR_BY_CODE['3']!, 'VT', STORM_COLOR_BY_CODE.VT!, '4', STORM_COLOR_BY_CODE['4']!, '5', STORM_COLOR_BY_CODE['5']!, 'ST', STORM_COLOR_BY_CODE.ST!, STORM_SOURCE_FALLBACK],
+    },
+  })
+
+  // 预测线（按 source 着色 + 虚线）
+  map.addSource('typhoon-forecast-line-source', { type: 'geojson', data: geojson.forecastLine as any })
+  map.addLayer({
+    id: 'typhoon-forecast-line',
+    type: 'line',
+    source: 'typhoon-forecast-line-source',
+    layout: { 'line-cap': 'round', 'line-join': 'round' },
+    paint: {
+      'line-color': ['match', ['get', 'source'], 'zoom-earth', STORM_COLOR_BY_SOURCE['zoom-earth']!, 'cma', STORM_COLOR_BY_SOURCE.cma!, 'jma', STORM_COLOR_BY_SOURCE.jma!, 'jtwc', STORM_COLOR_BY_SOURCE.jtwc!, 'cwa', STORM_COLOR_BY_SOURCE.cwa!, 'hko', STORM_COLOR_BY_SOURCE.hko!, 'kma', STORM_COLOR_BY_SOURCE.kma!, STORM_SOURCE_FALLBACK],
+      'line-width': 2,
+      'line-opacity': 0.85,
+      'line-dasharray': [2, 2],
+    },
+  })
+
+  // 预测点
+  map.addSource('typhoon-forecast-points-source', { type: 'geojson', data: geojson.forecastPoints as any })
+  map.addLayer({
+    id: 'typhoon-forecast-points',
+    type: 'circle',
+    source: 'typhoon-forecast-points-source',
+    paint: {
+      'circle-radius': STORM_FORECAST_POINT_RADIUS,
+      'circle-color': ['match', ['get', 'source'], 'zoom-earth', STORM_COLOR_BY_SOURCE['zoom-earth']!, 'cma', STORM_COLOR_BY_SOURCE.cma!, 'jma', STORM_COLOR_BY_SOURCE.jma!, 'jtwc', STORM_COLOR_BY_SOURCE.jtwc!, 'cwa', STORM_COLOR_BY_SOURCE.cwa!, 'hko', STORM_COLOR_BY_SOURCE.hko!, 'kma', STORM_COLOR_BY_SOURCE.kma!, STORM_SOURCE_FALLBACK],
+      'circle-opacity': 0.95,
+    },
+  })
+
+  // 当前活跃位置大圆
+  map.addSource('typhoon-active-marker-source', { type: 'geojson', data: geojson.activeMarker as any })
+  map.addLayer({
+    id: 'typhoon-active-marker',
+    type: 'circle',
+    source: 'typhoon-active-marker-source',
+    paint: {
+      'circle-radius': STORM_ACTIVE_MARKER_RADIUS,
+      'circle-color': ['match', ['get', 'code'], 'D', STORM_COLOR_BY_CODE.D!, 'S', STORM_COLOR_BY_CODE.S!, '1', STORM_COLOR_BY_CODE['1']!, 'SS', STORM_COLOR_BY_CODE.SS!, '2', STORM_COLOR_BY_CODE['2']!, 'T', STORM_COLOR_BY_CODE.T!, '3', STORM_COLOR_BY_CODE['3']!, 'VT', STORM_COLOR_BY_CODE.VT!, '4', STORM_COLOR_BY_CODE['4']!, '5', STORM_COLOR_BY_CODE['5']!, 'ST', STORM_COLOR_BY_CODE.ST!, STORM_ACTUAL_LINE_COLOR],
+      'circle-opacity': 1,
+    },
+  })
+
+  // Popup 交互（事件在 onMounted 中挂载一次，handler 内按 layer id 过滤）
+}
+
+const STORM_POPUP_LAYER_SET = new Set([
+  'typhoon-actual-points',
+  'typhoon-forecast-points',
+  'typhoon-active-marker',
+])
+
+function handleStormMouseEnter(e: maplibregl.MapMouseEvent) {
+  if (!map)
+    return
+  const features = map.queryRenderedFeatures(e.point, { layers: [...STORM_POPUP_LAYER_SET] })
+  map.getCanvas().style.cursor = features.length > 0 ? 'pointer' : ''
+}
+
+function handleStormMouseLeave() {
+  if (map)
+    map.getCanvas().style.cursor = ''
+}
+
+function handleStormClick(e: maplibregl.MapMouseEvent) {
+  if (!map)
+    return
+  const features = map.queryRenderedFeatures(e.point, { layers: [...STORM_POPUP_LAYER_SET] })
+  if (features.length === 0)
+    return
+  const f = features[0]!
+  const geom = f.geometry as any
+  const coords = geom && geom.type === 'Point' ? geom.coordinates : [e.lngLat.lng, e.lngLat.lat]
+  const props = { ...f.properties, lng: coords[0], lat: coords[1] }
+  if (stormPopup)
+    stormPopup.remove()
+  stormPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '260px', className: 'storm-popup' })
+    .setLngLat(coords as [number, number])
+    .setHTML(stormPointPopupHtml(props))
+    .addTo(map)
+}
+
+watch(() => timelineStore.showTyphoon, () => updateTyphoonLayers())
+watch(() => timelineStore.stormTracksFetchedAt, () => updateTyphoonLayers())
+watch(() => timelineStore.stormTracks, () => updateTyphoonLayers(), { deep: true })
+watch(() => timelineStore.stormVisibility, () => updateTyphoonLayers(), { deep: true })
+watch(() => timelineStore.stormForecastSources, () => updateTyphoonLayers(), { deep: true })
+
 function onMapZoom() {
   if (map)
     timelineStore.windCurrentZoom = Math.round(map.getZoom())
@@ -682,7 +1062,7 @@ function tileGridUpdate() {
     }
   }
 
-  const geojson = { type: 'FeatureCollection', features }
+  const geojson = { type: 'FeatureCollection' as const, features }
 
   if (!map.getSource(sourceId)) {
     map.addSource(sourceId, { type: 'geojson', data: geojson })
@@ -840,7 +1220,11 @@ watch(() => timelineStore.mapProjection, (newProjection) => {
 onUnmounted(() => {
   closeGlowIndexPopup()
   destroyWindLayer()
+  removeTyphoonLayers()
   if (map) {
+    map.off('mousemove', handleStormMouseEnter)
+    map.off('mouseout', handleStormMouseLeave)
+    map.off('click', handleStormClick)
     map.remove()
   }
 })
@@ -882,6 +1266,32 @@ defineExpose({
   top: 4px;
 }
 :deep(.glow-index-popup .maplibregl-popup-close-button:hover) {
+  color: #fff;
+  background: transparent;
+}
+:deep(.storm-popup .maplibregl-popup-content) {
+  background: #1e1e1e;
+  border-radius: 8px;
+  padding: 10px 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+}
+:deep(.storm-popup) {
+  z-index: 10;
+}
+/* 风场粒子 canvas 用 screen 混合，让下层 MapLibre 图层（实况/预测路线点位）视觉上不被遮挡 */
+:deep(.wind-particles-canvas) {
+  mix-blend-mode: screen;
+}
+:deep(.storm-popup .maplibregl-popup-tip) {
+  border-top-color: #1e1e1e;
+}
+:deep(.storm-popup .maplibregl-popup-close-button) {
+  color: #999;
+  font-size: 16px;
+  right: 6px;
+  top: 4px;
+}
+:deep(.storm-popup .maplibregl-popup-close-button:hover) {
   color: #fff;
   background: transparent;
 }

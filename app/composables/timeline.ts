@@ -16,6 +16,51 @@ export type TimelineControlStyle = 'classic' | 'ruler'
 
 export interface ChromaticSkyResource { date: string, event: string }
 
+// --- 台风相关类型 ---
+export type StormCode = 'D' | 'S' | '1' | '2' | '3' | '4' | '5' | 'ST' | string
+
+export interface StormActiveItem {
+  id: string
+  kind: 'storm' | 'disturbance'
+  watched: boolean
+  sources: string[]
+  cma_tfid: string | null
+}
+
+export interface StormTrackPoint {
+  date: string
+  lng: number
+  lat: number
+  wind: number
+  pressure: number
+  code: StormCode
+  description: string
+  source?: string
+  first_seen?: string
+}
+
+export interface StormForecastBatch {
+  source: string
+  issued_at: string
+  points: StormTrackPoint[]
+}
+
+export interface StormTrack {
+  id: string
+  info: {
+    name: string
+    title: string
+    type: string
+    active: boolean
+    season: string
+    agencies: string
+    cma_tfid: string | null
+  }
+  last_updated: string
+  track_history: StormTrackPoint[]
+  forecasts: StormForecastBatch[]
+}
+
 const WIND_LEVEL = '850hPa'
 
 export const useTimelineStore = defineStore('timeline', () => {
@@ -58,6 +103,18 @@ export const useTimelineStore = defineStore('timeline', () => {
     colorBySpeed: false,
     zoomParams: {},
   }))
+  // --- 台风图层 ---
+  const showTyphoon = useLocalStorage<boolean>('ze-show-typhoon', true)
+  const activeStorms = ref<StormActiveItem[]>([])
+  const stormTracks = ref<Record<string, StormTrack>>({})
+  const stormTracksLoading = ref(false)
+  const stormTracksFetchedAt = ref<number | null>(null)
+  const stormVisibility = useLocalStorage<Record<string, boolean>>('ze-storm-visibility', {})
+  // 预测机构开关，默认仅 zoom-earth 开启
+  const stormForecastSources = useLocalStorage<Record<string, boolean>>(
+    'ze-storm-forecast-sources',
+    () => ({ 'zoom-earth': true }),
+  )
 
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
@@ -213,6 +270,49 @@ export const useTimelineStore = defineStore('timeline', () => {
       }
     })()
     return windFetchPromise
+  }
+
+  // --- 台风图层 Actions ---
+  async function fetchActiveStorms() {
+    const base = useRuntimeConfig().public.gisServerUrl as string
+    if (!base)
+      return
+    stormTracksLoading.value = true
+    try {
+      const data = await $fetch<{ fetched_at: string, storms: StormActiveItem[] }>(`${base}/storm/storms_active.json`)
+      activeStorms.value = data.storms ?? []
+      // 默认对每个 storm 开启可见
+      for (const s of activeStorms.value) {
+        if (stormVisibility.value[s.id] === undefined)
+          stormVisibility.value[s.id] = true
+      }
+      // 并发拉每个 track（只拉已关注的 storm，扰动不拉）
+      await Promise.all(
+        activeStorms.value
+          .filter(s => s.kind === 'storm' && s.watched)
+          .map(async (s) => {
+            if (stormTracks.value[s.id])
+              return
+            try {
+              const t = await $fetch<StormTrack>(`${base}/storm/tracks/${s.id}.json`)
+              stormTracks.value[s.id] = t
+            }
+            catch (e) {
+              console.error(`加载台风 ${s.id} 路径失败:`, e)
+            }
+          }),
+      )
+      stormTracksFetchedAt.value = Date.now()
+    }
+    finally {
+      stormTracksLoading.value = false
+    }
+  }
+
+  function refreshStormTracks() {
+    stormTracks.value = {}
+    stormTracksFetchedAt.value = null
+    return fetchActiveStorms()
   }
 
   /**
@@ -410,6 +510,13 @@ export const useTimelineStore = defineStore('timeline', () => {
     selectedWindTimestamp,
     windCurrentZoom,
     windOptions,
+    showTyphoon,
+    activeStorms,
+    stormTracks,
+    stormTracksLoading,
+    stormTracksFetchedAt,
+    stormVisibility,
+    stormForecastSources,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -434,6 +541,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     fetchChromaticSkyManifest,
     setChromaticSkySelection,
     fetchWindManifests: fetchWindTimestamps,
+    fetchActiveStorms,
+    refreshStormTracks,
   }
 })
 
