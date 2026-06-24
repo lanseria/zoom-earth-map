@@ -184,7 +184,7 @@ const fetchedAtLabel = computed(() => {
                     class="rounded-full shrink-0 h-3 w-3 shadow"
                     :style="{ backgroundColor: codeColor(latestPoint(trackOf(storm.id))?.code ?? 'D') }"
                   />
-                  <div class="min-w-0">
+                  <div class="flex flex-col min-w-0 items-start">
                     <div class="text-sm font-medium truncate">
                       {{ trackOf(storm.id)?.info.name ?? storm.id }}
                     </div>

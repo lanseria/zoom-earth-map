@@ -42,7 +42,7 @@ const STORM_COLOR_BY_CODE: Record<string, string> = {
   ST: '#ff5900', // Very Strong Typhoon
   4: '#ff0022', // 超强台风（暴力台风）
   VT: '#ff0022', // Violent Typhoon（暴力台风）
-  5: '#ff0022', // Cat 5
+  5: '#FF55BB', // Cat 5
 }
 const STORM_COLOR_BY_SOURCE: Record<string, string> = {
   'zoom-earth': '#00b4d8',
@@ -59,6 +59,24 @@ const STORM_SOURCE_FALLBACK = '#94a3b8'
 const STORM_POINT_RADIUS = 5
 const STORM_FORECAST_POINT_RADIUS = 4
 const STORM_ACTIVE_MARKER_RADIUS = 8
+// SVG 图标的渲染半径（视觉直径 = 2 * 这个值）
+const STORM_ACTIVE_SVG_RADIUS = 18
+// 台风等级 code → 对应的 SVG 资源名（只有 SS/T/ST/VT 这几级用 SVG 旋转）
+// 数字 code 1/2/3/4 与字母 SS/T/ST/VT 等价
+const STORM_SVG_BY_CODE: Record<string, string> = {
+  SS: 'SS',
+  1: 'SS',
+  T: 'T',
+  2: 'T',
+  ST: 'ST',
+  3: 'ST',
+  VT: 'VT',
+  4: 'VT',
+}
+
+function stormActiveSvg(code: string): string | null {
+  return STORM_SVG_BY_CODE[code] ?? null
+}
 
 function stormSourceColor(source: string) {
   return STORM_COLOR_BY_SOURCE[source] ?? STORM_SOURCE_FALLBACK
@@ -725,6 +743,9 @@ interface StormCircleEl {
   lng: number
   lat: number
   data: Record<string, any>
+  // 仅对 active marker 有效：'breath'=呼吸圆 'rotate'=SVG旋转
+  activeKind?: 'breath' | 'rotate'
+  svgUrl?: string
 }
 
 // 触发 SVG overlay 重算的 tick（map 移动/缩放时累加）
@@ -802,10 +823,10 @@ const stormOverlay = computed(() => {
     }
 
     // 实况点
-    for (const p of history) {
+    history.forEach((p, idx) => {
       const screen = map.project([p.lng, p.lat])
       empty.actualPoints.push({
-        key: `${storm.id}-actual-${p.date}`,
+        key: `${storm.id}-actual-${idx}-${p.date}`,
         cx: screen.x,
         cy: screen.y,
         r: STORM_POINT_RADIUS,
@@ -823,21 +844,24 @@ const stormOverlay = computed(() => {
           source: p.source ?? 'zoom-earth',
         },
       })
-    }
+    })
 
     // 最新实况点 → active marker
     const latest = history.at(-1)
     if (latest) {
       const screen = map.project([latest.lng, latest.lat])
+      const svgName = stormActiveSvg(latest.code)
       empty.activeMarkers.push({
         key: `${storm.id}-active`,
         cx: screen.x,
         cy: screen.y,
-        r: STORM_ACTIVE_MARKER_RADIUS,
+        r: svgName ? STORM_ACTIVE_SVG_RADIUS : STORM_ACTIVE_MARKER_RADIUS,
         fill: stormPointColor(latest.code),
         fillOpacity: 1,
         lng: latest.lng,
         lat: latest.lat,
+        activeKind: svgName ? 'rotate' : 'breath',
+        svgUrl: svgName ? `/assets/svg/${svgName}.svg` : undefined,
         data: {
           name,
           date: latest.date,
@@ -873,14 +897,14 @@ const stormOverlay = computed(() => {
           dash: '6,6',
         })
       }
-      for (const p of sorted) {
+      sorted.forEach((p, idx) => {
         const screen = map.project([p.lng, p.lat])
         empty.forecastPoints.push({
-          key: `${storm.id}-forecast-${batch.source}-${p.date}`,
+          key: `${storm.id}-forecast-${batch.source}-${idx}-${p.date}`,
           cx: screen.x,
           cy: screen.y,
           r: STORM_FORECAST_POINT_RADIUS,
-          fill: stormSourceColor(batch.source),
+          fill: stormPointColor(p.code),
           fillOpacity: 0.95,
           lng: p.lng,
           lat: p.lat,
@@ -895,7 +919,7 @@ const stormOverlay = computed(() => {
             issued_at: batch.issued_at,
           },
         })
-      }
+      })
     }
   }
 
@@ -1231,15 +1255,27 @@ defineExpose({
         @mouseleave="onStormHover(false)"
         @click="onStormClick(p, $event)"
       />
-      <!-- 当前活跃位置大圆 -->
-      <circle
-        v-for="p in stormOverlay.activeMarkers" :key="p.key"
-        :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.fill"
-        class="storm-hit"
-        @mouseenter="onStormHover(true)"
-        @mouseleave="onStormHover(false)"
-        @click="onStormClick(p, $event)"
-      />
+      <!-- 当前活跃位置：SS/T/ST/VT 用 SVG 图标旋转，其他等级（D/S 等）用呼吸圆 -->
+      <template v-for="p in stormOverlay.activeMarkers" :key="p.key">
+        <image
+          v-if="p.activeKind === 'rotate' && p.svgUrl"
+          :href="p.svgUrl"
+          :x="p.cx - p.r" :y="p.cy - p.r"
+          :width="p.r * 2" :height="p.r * 2"
+          class="storm-hit storm-active-svg"
+          @mouseenter="onStormHover(true)"
+          @mouseleave="onStormHover(false)"
+          @click="onStormClick(p, $event)"
+        />
+        <circle
+          v-else
+          :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.fill"
+          class="storm-hit storm-active-breath"
+          @mouseenter="onStormHover(true)"
+          @mouseleave="onStormHover(false)"
+          @click="onStormClick(p, $event)"
+        />
+      </template>
     </svg>
   </div>
 </template>
@@ -1262,14 +1298,45 @@ defineExpose({
   z-index: 4;
 }
 /* 只有可点击的圆点接收鼠标事件，path 和 svg 本身不阻挡地图交互 */
+/* 所有圆点统一用白色描边 */
 .typhoon-overlay .storm-hit {
   pointer-events: auto;
   cursor: pointer;
-  stroke: rgba(0, 0, 0, 0.6);
-  stroke-width: 1.2px;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 1.5px;
 }
 .typhoon-overlay .storm-hit:hover {
   filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.8));
+}
+/* D/S 级别的活跃位置：呼吸放大缩小，描边更粗 */
+.typhoon-overlay .storm-active-breath {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: storm-breath 2.8s ease-in-out infinite;
+  stroke-width: 2.5px;
+}
+/* SS/T/ST/VT 级别的活跃位置：SVG 图标持续逆时针旋转 */
+.typhoon-overlay .storm-active-svg {
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: storm-rotate 4s linear infinite reverse;
+}
+@keyframes storm-breath {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+@keyframes storm-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 /* 将MapLibre的logo颜色反转以在黑色背景上可见 */
 :deep(.maplibregl-ctrl-logo) {
