@@ -861,7 +861,7 @@ const stormOverlay = computed(() => {
         lng: latest.lng,
         lat: latest.lat,
         activeKind: svgName ? 'rotate' : 'breath',
-        svgUrl: svgName ? `/assets/svg/${svgName}.svg` : undefined,
+        svgUrl: svgName ? `/svg/${svgName}.svg` : undefined,
         data: {
           name,
           date: latest.date,
