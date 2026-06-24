@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { StormForecastBatch, StormTrack, StormTrackPoint } from '~/composables/timeline'
+import type { StormForecastBatch, StormTrackPoint } from '~/composables/timeline'
 import type { BaseMapType } from '~/constants/map'
 import type { WindData } from '~/utils/wind-particles'
 import maplibregl from 'maplibre-gl'
@@ -172,11 +172,11 @@ onMounted(() => {
       updateSatelliteLayer(props.selectedTimestamp)
     if (timelineStore.showWind)
       updateWindLayer()
-    // 台风图层：首次自动拉取已关注列表，等数据回来后再渲染
+    // 台风图层：首次自动拉取已关注列表，等数据回来后 SVG overlay 会响应式更新
     if (timelineStore.showTyphoon) {
-      updateTyphoonLayers()
+      scheduleStormOverlayUpdate()
       if (timelineStore.activeStorms.length === 0)
-        timelineStore.fetchActiveStorms().finally(() => updateTyphoonLayers())
+        timelineStore.fetchActiveStorms().finally(() => scheduleStormOverlayUpdate())
     }
     // 恢复存储的投影设置
     if (timelineStore.mapProjection === 'globe')
@@ -184,14 +184,16 @@ onMounted(() => {
     // 初始化贴图网格
     tileGridUpdate()
     onMapZoom()
+    // 初始化 SVG overlay 尺寸
+    updateOverlaySize()
   })
 
   map.on('zoomend', onMapZoom)
 
-  // 台风图层交互事件（一次性挂载）
-  map.on('mousemove', handleStormMouseEnter)
-  map.on('mouseout', handleStormMouseLeave)
-  map.on('click', handleStormClick)
+  // 台风 SVG overlay：地图移动/缩放时重新计算屏幕坐标
+  map.on('move', scheduleStormOverlayUpdate)
+  map.on('zoom', scheduleStormOverlayUpdate)
+  map.on('resize', updateOverlaySize)
 
   map.on('error', (e) => {
     if (e && e.error)
@@ -702,70 +704,116 @@ watch(() => timelineStore.windOptions, (opts) => {
   windParticleLayer?.updateOptions(opts)
 }, { deep: true })
 
-// --- 台风图层 ---
-const STORM_LAYER_IDS = [
-  'typhoon-actual-line',
-  'typhoon-actual-points',
-  'typhoon-forecast-line',
-  'typhoon-forecast-points',
-  'typhoon-active-marker',
-]
-const STORM_SOURCE_IDS = [
-  'typhoon-actual-line-source',
-  'typhoon-actual-points-source',
-  'typhoon-forecast-line-source',
-  'typhoon-forecast-points-source',
-  'typhoon-active-marker-source',
-]
+// --- 台风图层（用 SVG overlay 渲染，浮在风力粒子 canvas 之上）---
 let stormPopup: maplibregl.Popup | null = null
 
-function removeTyphoonLayers() {
-  if (!map)
-    return
-  for (const id of STORM_LAYER_IDS) {
-    if (map.getLayer(id))
-      map.removeLayer(id)
-  }
-  for (const id of STORM_SOURCE_IDS) {
-    if (map.getSource(id))
-      map.removeSource(id)
-  }
-  if (stormPopup) {
-    stormPopup.remove()
-    stormPopup = null
-  }
+interface StormLinePath {
+  key: string
+  d: string
+  stroke: string
+  strokeWidth: number
+  strokeOpacity: number
+  dash?: string
+}
+interface StormCircleEl {
+  key: string
+  cx: number
+  cy: number
+  r: number
+  fill: string
+  fillOpacity: number
+  lng: number
+  lat: number
+  data: Record<string, any>
 }
 
-function buildStormGeoJSON() {
+// 触发 SVG overlay 重算的 tick（map 移动/缩放时累加）
+const stormOverlayTick = ref(0)
+// SVG 尺寸（跟随地图容器）
+const overlaySize = reactive({ width: 0, height: 0 })
+
+// 节流：用 RAF 把多次 move/zoom 合并到下一帧
+let stormRafId: number | null = null
+function scheduleStormOverlayUpdate() {
+  if (stormRafId !== null)
+    return
+  stormRafId = requestAnimationFrame(() => {
+    stormRafId = null
+    stormOverlayTick.value++
+  })
+}
+
+function updateOverlaySize() {
+  if (!map)
+    return
+  const rect = map.getContainer().getBoundingClientRect()
+  overlaySize.width = rect.width
+  overlaySize.height = rect.height
+}
+
+// 把地理坐标串转为 SVG path d 字符串
+function coordsToPath(coords: [number, number][]): string {
+  if (!map || coords.length === 0)
+    return ''
+  let d = ''
+  for (let i = 0; i < coords.length; i++) {
+    const p = map.project(coords[i]!)
+    d += `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)} `
+  }
+  return d.trim()
+}
+
+const stormOverlayVisible = computed(() => timelineStore.showTyphoon)
+
+// 一次性算出所有 SVG 元素，避免 template 里多次调用 map.project
+const stormOverlay = computed(() => {
+  // 显式依赖 tick，让 move/zoom 触发重算
+  void stormOverlayTick.value
+
+  const empty = {
+    actualLines: [] as StormLinePath[],
+    forecastLines: [] as StormLinePath[],
+    actualPoints: [] as StormCircleEl[],
+    forecastPoints: [] as StormCircleEl[],
+    activeMarkers: [] as StormCircleEl[],
+  }
+  if (!map || !timelineStore.showTyphoon)
+    return empty
+
   const visibleStorms = timelineStore.activeStorms
     .filter(s => s.kind === 'storm'
       && (timelineStore.stormVisibility[s.id] ?? true)
       && timelineStore.stormTracks[s.id])
 
-  const actualLineFeatures: any[] = []
-  const actualPointFeatures: any[] = []
-  const forecastLineFeatures: any[] = []
-  const forecastPointFeatures: any[] = []
-  const activeMarkerFeatures: any[] = []
-
   for (const storm of visibleStorms) {
     const track = timelineStore.stormTracks[storm.id]!
     const name = track.info.name
     const history = sortPointsByDate(track.track_history)
+
     // 实况线
     if (history.length >= 2) {
-      actualLineFeatures.push({
-        type: 'Feature',
-        properties: { storm_id: storm.id, name, kind: 'actual' },
-        geometry: { type: 'LineString', coordinates: history.map(p => [p.lng, p.lat]) },
+      empty.actualLines.push({
+        key: `${storm.id}-actual-line`,
+        d: coordsToPath(history.map(p => [p.lng, p.lat])),
+        stroke: STORM_ACTUAL_LINE_COLOR,
+        strokeWidth: 3,
+        strokeOpacity: 0.9,
       })
     }
+
     // 实况点
     for (const p of history) {
-      actualPointFeatures.push({
-        type: 'Feature',
-        properties: {
-          storm_id: storm.id,
+      const screen = map.project([p.lng, p.lat])
+      empty.actualPoints.push({
+        key: `${storm.id}-actual-${p.date}`,
+        cx: screen.x,
+        cy: screen.y,
+        r: STORM_POINT_RADIUS,
+        fill: stormPointColor(p.code),
+        fillOpacity: 1,
+        lng: p.lng,
+        lat: p.lat,
+        data: {
           name,
           date: p.date,
           wind: p.wind,
@@ -773,18 +821,24 @@ function buildStormGeoJSON() {
           code: p.code,
           description: p.description,
           source: p.source ?? 'zoom-earth',
-          kind: 'actual',
         },
-        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
       })
     }
+
     // 最新实况点 → active marker
     const latest = history.at(-1)
     if (latest) {
-      activeMarkerFeatures.push({
-        type: 'Feature',
-        properties: {
-          storm_id: storm.id,
+      const screen = map.project([latest.lng, latest.lat])
+      empty.activeMarkers.push({
+        key: `${storm.id}-active`,
+        cx: screen.x,
+        cy: screen.y,
+        r: STORM_ACTIVE_MARKER_RADIUS,
+        fill: stormPointColor(latest.code),
+        fillOpacity: 1,
+        lng: latest.lng,
+        lat: latest.lat,
+        data: {
           name,
           date: latest.date,
           wind: latest.wind,
@@ -793,9 +847,9 @@ function buildStormGeoJSON() {
           description: latest.description,
           source: latest.source ?? 'zoom-earth',
         },
-        geometry: { type: 'Point', coordinates: [latest.lng, latest.lat] },
       })
     }
+
     // 预测（按 source 取最新一批；仅渲染已开启的预测机构）
     for (const batch of pickLatestForecastBatches(track.forecasts)) {
       if (!timelineStore.stormForecastSources[batch.source])
@@ -804,29 +858,33 @@ function buildStormGeoJSON() {
       if (sorted.length === 0)
         continue
       // 把当前最新实况点接到预测线开头，避免预测线和实况断开
-      const lineCoords: number[][] = []
+      const lineCoords: [number, number][] = []
       if (latest)
         lineCoords.push([latest.lng, latest.lat])
       for (const p of sorted)
         lineCoords.push([p.lng, p.lat])
       if (lineCoords.length >= 2) {
-        forecastLineFeatures.push({
-          type: 'Feature',
-          properties: {
-            storm_id: storm.id,
-            name,
-            source: batch.source,
-            issued_at: batch.issued_at,
-            kind: 'forecast',
-          },
-          geometry: { type: 'LineString', coordinates: lineCoords },
+        empty.forecastLines.push({
+          key: `${storm.id}-forecast-line-${batch.source}`,
+          d: coordsToPath(lineCoords),
+          stroke: stormSourceColor(batch.source),
+          strokeWidth: 2,
+          strokeOpacity: 0.85,
+          dash: '6,6',
         })
       }
       for (const p of sorted) {
-        forecastPointFeatures.push({
-          type: 'Feature',
-          properties: {
-            storm_id: storm.id,
+        const screen = map.project([p.lng, p.lat])
+        empty.forecastPoints.push({
+          key: `${storm.id}-forecast-${batch.source}-${p.date}`,
+          cx: screen.x,
+          cy: screen.y,
+          r: STORM_FORECAST_POINT_RADIUS,
+          fill: stormSourceColor(batch.source),
+          fillOpacity: 0.95,
+          lng: p.lng,
+          lat: p.lat,
+          data: {
             name,
             date: p.date,
             wind: p.wind,
@@ -835,22 +893,14 @@ function buildStormGeoJSON() {
             description: p.description,
             source: batch.source,
             issued_at: batch.issued_at,
-            kind: 'forecast',
           },
-          geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
         })
       }
     }
   }
 
-  return {
-    actualLine: { type: 'FeatureCollection' as const, features: actualLineFeatures },
-    actualPoints: { type: 'FeatureCollection' as const, features: actualPointFeatures },
-    forecastLine: { type: 'FeatureCollection' as const, features: forecastLineFeatures },
-    forecastPoints: { type: 'FeatureCollection' as const, features: forecastPointFeatures },
-    activeMarker: { type: 'FeatureCollection' as const, features: activeMarkerFeatures },
-  }
-}
+  return empty
+})
 
 function stormPointPopupHtml(props: any): string {
   const windMs = (props.wind * 1.852).toFixed(1)
@@ -873,133 +923,31 @@ function stormPointPopupHtml(props: any): string {
   `
 }
 
-function updateTyphoonLayers() {
+function onStormHover(isHover: boolean) {
   if (!map)
     return
-  // style 还在过渡态时排队等下一个 idle 重试，避免首次刷新漏渲染
-  if (!map.isStyleLoaded()) {
-    map.once('idle', updateTyphoonLayers)
-    return
-  }
-
-  removeTyphoonLayers()
-
-  if (!timelineStore.showTyphoon)
-    return
-
-  const geojson = buildStormGeoJSON()
-
-  // 实况线
-  map.addSource('typhoon-actual-line-source', { type: 'geojson', data: geojson.actualLine as any })
-  map.addLayer({
-    id: 'typhoon-actual-line',
-    type: 'line',
-    source: 'typhoon-actual-line-source',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: {
-      'line-color': STORM_ACTUAL_LINE_COLOR,
-      'line-width': 3,
-      'line-opacity': 0.9,
-    },
-  }, 'country-boundaries-outline-layer')
-
-  // 实况点
-  map.addSource('typhoon-actual-points-source', { type: 'geojson', data: geojson.actualPoints as any })
-  map.addLayer({
-    id: 'typhoon-actual-points',
-    type: 'circle',
-    source: 'typhoon-actual-points-source',
-    paint: {
-      'circle-radius': STORM_POINT_RADIUS,
-      'circle-color': ['match', ['get', 'code'], 'D', STORM_COLOR_BY_CODE.D!, 'S', STORM_COLOR_BY_CODE.S!, '1', STORM_COLOR_BY_CODE['1']!, 'SS', STORM_COLOR_BY_CODE.SS!, '2', STORM_COLOR_BY_CODE['2']!, 'T', STORM_COLOR_BY_CODE.T!, '3', STORM_COLOR_BY_CODE['3']!, 'VT', STORM_COLOR_BY_CODE.VT!, '4', STORM_COLOR_BY_CODE['4']!, '5', STORM_COLOR_BY_CODE['5']!, 'ST', STORM_COLOR_BY_CODE.ST!, STORM_SOURCE_FALLBACK],
-    },
-  })
-
-  // 预测线（按 source 着色 + 虚线）
-  map.addSource('typhoon-forecast-line-source', { type: 'geojson', data: geojson.forecastLine as any })
-  map.addLayer({
-    id: 'typhoon-forecast-line',
-    type: 'line',
-    source: 'typhoon-forecast-line-source',
-    layout: { 'line-cap': 'round', 'line-join': 'round' },
-    paint: {
-      'line-color': ['match', ['get', 'source'], 'zoom-earth', STORM_COLOR_BY_SOURCE['zoom-earth']!, 'cma', STORM_COLOR_BY_SOURCE.cma!, 'jma', STORM_COLOR_BY_SOURCE.jma!, 'jtwc', STORM_COLOR_BY_SOURCE.jtwc!, 'cwa', STORM_COLOR_BY_SOURCE.cwa!, 'hko', STORM_COLOR_BY_SOURCE.hko!, 'kma', STORM_COLOR_BY_SOURCE.kma!, STORM_SOURCE_FALLBACK],
-      'line-width': 2,
-      'line-opacity': 0.85,
-      'line-dasharray': [2, 2],
-    },
-  })
-
-  // 预测点
-  map.addSource('typhoon-forecast-points-source', { type: 'geojson', data: geojson.forecastPoints as any })
-  map.addLayer({
-    id: 'typhoon-forecast-points',
-    type: 'circle',
-    source: 'typhoon-forecast-points-source',
-    paint: {
-      'circle-radius': STORM_FORECAST_POINT_RADIUS,
-      'circle-color': ['match', ['get', 'source'], 'zoom-earth', STORM_COLOR_BY_SOURCE['zoom-earth']!, 'cma', STORM_COLOR_BY_SOURCE.cma!, 'jma', STORM_COLOR_BY_SOURCE.jma!, 'jtwc', STORM_COLOR_BY_SOURCE.jtwc!, 'cwa', STORM_COLOR_BY_SOURCE.cwa!, 'hko', STORM_COLOR_BY_SOURCE.hko!, 'kma', STORM_COLOR_BY_SOURCE.kma!, STORM_SOURCE_FALLBACK],
-      'circle-opacity': 0.95,
-    },
-  })
-
-  // 当前活跃位置大圆
-  map.addSource('typhoon-active-marker-source', { type: 'geojson', data: geojson.activeMarker as any })
-  map.addLayer({
-    id: 'typhoon-active-marker',
-    type: 'circle',
-    source: 'typhoon-active-marker-source',
-    paint: {
-      'circle-radius': STORM_ACTIVE_MARKER_RADIUS,
-      'circle-color': ['match', ['get', 'code'], 'D', STORM_COLOR_BY_CODE.D!, 'S', STORM_COLOR_BY_CODE.S!, '1', STORM_COLOR_BY_CODE['1']!, 'SS', STORM_COLOR_BY_CODE.SS!, '2', STORM_COLOR_BY_CODE['2']!, 'T', STORM_COLOR_BY_CODE.T!, '3', STORM_COLOR_BY_CODE['3']!, 'VT', STORM_COLOR_BY_CODE.VT!, '4', STORM_COLOR_BY_CODE['4']!, '5', STORM_COLOR_BY_CODE['5']!, 'ST', STORM_COLOR_BY_CODE.ST!, STORM_ACTUAL_LINE_COLOR],
-      'circle-opacity': 1,
-    },
-  })
-
-  // Popup 交互（事件在 onMounted 中挂载一次，handler 内按 layer id 过滤）
+  map.getCanvas().style.cursor = isHover ? 'pointer' : ''
 }
 
-const STORM_POPUP_LAYER_SET = new Set([
-  'typhoon-actual-points',
-  'typhoon-forecast-points',
-  'typhoon-active-marker',
-])
-
-function handleStormMouseEnter(e: maplibregl.MapMouseEvent) {
+function onStormClick(el: StormCircleEl, e: MouseEvent) {
   if (!map)
     return
-  const features = map.queryRenderedFeatures(e.point, { layers: [...STORM_POPUP_LAYER_SET] })
-  map.getCanvas().style.cursor = features.length > 0 ? 'pointer' : ''
-}
-
-function handleStormMouseLeave() {
-  if (map)
-    map.getCanvas().style.cursor = ''
-}
-
-function handleStormClick(e: maplibregl.MapMouseEvent) {
-  if (!map)
-    return
-  const features = map.queryRenderedFeatures(e.point, { layers: [...STORM_POPUP_LAYER_SET] })
-  if (features.length === 0)
-    return
-  const f = features[0]!
-  const geom = f.geometry as any
-  const coords = geom && geom.type === 'Point' ? geom.coordinates : [e.lngLat.lng, e.lngLat.lat]
-  const props = { ...f.properties, lng: coords[0], lat: coords[1] }
+  e.stopPropagation()
+  const props = { ...el.data, lng: el.lng, lat: el.lat }
   if (stormPopup)
     stormPopup.remove()
   stormPopup = new maplibregl.Popup({ closeButton: true, maxWidth: '260px', className: 'storm-popup' })
-    .setLngLat(coords as [number, number])
+    .setLngLat([el.lng, el.lat])
     .setHTML(stormPointPopupHtml(props))
     .addTo(map)
 }
 
-watch(() => timelineStore.showTyphoon, () => updateTyphoonLayers())
-watch(() => timelineStore.stormTracksFetchedAt, () => updateTyphoonLayers())
-watch(() => timelineStore.stormTracks, () => updateTyphoonLayers(), { deep: true })
-watch(() => timelineStore.stormVisibility, () => updateTyphoonLayers(), { deep: true })
-watch(() => timelineStore.stormForecastSources, () => updateTyphoonLayers(), { deep: true })
+// 数据变化时重算 overlay（tick 已经在 move/zoom 时累加，这里只监听数据本身的变更）
+watch(() => timelineStore.showTyphoon, () => scheduleStormOverlayUpdate())
+watch(() => timelineStore.stormTracksFetchedAt, () => scheduleStormOverlayUpdate())
+watch(() => timelineStore.stormTracks, () => scheduleStormOverlayUpdate(), { deep: true })
+watch(() => timelineStore.stormVisibility, () => scheduleStormOverlayUpdate(), { deep: true })
+watch(() => timelineStore.stormForecastSources, () => scheduleStormOverlayUpdate(), { deep: true })
 
 function onMapZoom() {
   if (map)
@@ -1220,11 +1168,18 @@ watch(() => timelineStore.mapProjection, (newProjection) => {
 onUnmounted(() => {
   closeGlowIndexPopup()
   destroyWindLayer()
-  removeTyphoonLayers()
+  if (stormPopup) {
+    stormPopup.remove()
+    stormPopup = null
+  }
+  if (stormRafId !== null) {
+    cancelAnimationFrame(stormRafId)
+    stormRafId = null
+  }
   if (map) {
-    map.off('mousemove', handleStormMouseEnter)
-    map.off('mouseout', handleStormMouseLeave)
-    map.off('click', handleStormClick)
+    map.off('move', scheduleStormOverlayUpdate)
+    map.off('zoom', scheduleStormOverlayUpdate)
+    map.off('resize', updateOverlaySize)
     map.remove()
   }
 })
@@ -1235,13 +1190,86 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="mapContainer" class="map-container" />
+  <div class="map-wrapper">
+    <div ref="mapContainer" class="map-container" />
+    <!-- 台风 SVG overlay：浮在风力粒子 canvas 之上，确保台风点线不被粒子遮挡 -->
+    <svg
+      v-show="stormOverlayVisible"
+      class="typhoon-overlay"
+      :width="overlaySize.width"
+      :height="overlaySize.height"
+      :viewBox="`0 0 ${overlaySize.width} ${overlaySize.height}`"
+    >
+      <!-- 实况线 -->
+      <path
+        v-for="l in stormOverlay.actualLines" :key="l.key"
+        :d="l.d" :stroke="l.stroke" :stroke-width="l.strokeWidth"
+        :stroke-opacity="l.strokeOpacity" stroke-linecap="round" stroke-linejoin="round" fill="none"
+      />
+      <!-- 预测线（虚线） -->
+      <path
+        v-for="l in stormOverlay.forecastLines" :key="l.key"
+        :d="l.d" :stroke="l.stroke" :stroke-width="l.strokeWidth"
+        :stroke-opacity="l.strokeOpacity" :stroke-dasharray="l.dash"
+        stroke-linecap="round" stroke-linejoin="round" fill="none"
+      />
+      <!-- 实况点 -->
+      <circle
+        v-for="p in stormOverlay.actualPoints" :key="p.key"
+        :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.fill"
+        class="storm-hit"
+        @mouseenter="onStormHover(true)"
+        @mouseleave="onStormHover(false)"
+        @click="onStormClick(p, $event)"
+      />
+      <!-- 预测点 -->
+      <circle
+        v-for="p in stormOverlay.forecastPoints" :key="p.key"
+        :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.fill" :fill-opacity="p.fillOpacity"
+        class="storm-hit"
+        @mouseenter="onStormHover(true)"
+        @mouseleave="onStormHover(false)"
+        @click="onStormClick(p, $event)"
+      />
+      <!-- 当前活跃位置大圆 -->
+      <circle
+        v-for="p in stormOverlay.activeMarkers" :key="p.key"
+        :cx="p.cx" :cy="p.cy" :r="p.r" :fill="p.fill"
+        class="storm-hit"
+        @mouseenter="onStormHover(true)"
+        @mouseleave="onStormHover(false)"
+        @click="onStormClick(p, $event)"
+      />
+    </svg>
+  </div>
 </template>
 
 <style scoped>
+.map-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
 .map-container {
   width: 100%;
   height: 100%;
+}
+/* 台风 SVG overlay：浮在风力粒子 canvas 之上 */
+.typhoon-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+/* 只有可点击的圆点接收鼠标事件，path 和 svg 本身不阻挡地图交互 */
+.typhoon-overlay .storm-hit {
+  pointer-events: auto;
+  cursor: pointer;
+  stroke: rgba(0, 0, 0, 0.6);
+  stroke-width: 1.2px;
+}
+.typhoon-overlay .storm-hit:hover {
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.8));
 }
 /* 将MapLibre的logo颜色反转以在黑色背景上可见 */
 :deep(.maplibregl-ctrl-logo) {
