@@ -109,7 +109,7 @@ const fetchedAtLabel = computed(() => {
 </script>
 
 <template>
-  <div class="pointer-events-auto right-4 top-52 absolute">
+  <div class="pointer-events-auto right-4 top-76 absolute">
     <!-- 台风图层触发按钮 -->
     <button
       class="icon-btn rounded-full bg-dark-800/70 flex h-10 w-10 items-center justify-center backdrop-blur-sm !text-2xl"

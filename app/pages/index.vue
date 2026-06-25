@@ -45,6 +45,8 @@ onUnmounted(() => {
       <SatelliteLayerPanel />
       <ChromaticSkyPanel />
       <WindLayerPanel />
+      <TempLayerPanel />
+      <CloudLayerPanel />
       <TyphoonPanel />
       <!-- 平滑动画加载指示器 -->
       <Transition

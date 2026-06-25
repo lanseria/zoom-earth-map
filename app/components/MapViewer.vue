@@ -190,6 +190,12 @@ onMounted(() => {
       updateSatelliteLayer(props.selectedTimestamp)
     if (timelineStore.showWind)
       updateWindLayer()
+    if (timelineStore.showTemp) {
+      timelineStore.fetchTempManifests(props.serverUrl).then(() => updateTempLayer())
+    }
+    if (timelineStore.showCloud) {
+      timelineStore.fetchCloudManifests(props.serverUrl).then(() => updateCloudLayer())
+    }
     // 台风图层：首次自动拉取已关注列表，等数据回来后 SVG overlay 会响应式更新
     if (timelineStore.showTyphoon) {
       scheduleStormOverlayUpdate()
@@ -697,7 +703,7 @@ async function updateWindLayer() {
   }
 
   try {
-    const url = `${props.serverUrl}/wind-tiles/850hPa/particle/${windTs}.json`
+    const url = `${props.serverUrl}/atmos-tiles/wind/850hPa/particle/${windTs}.json`
     const data = await $fetch<WindData>(url)
     if (gen !== windLayerGen)
       return
@@ -721,6 +727,131 @@ watch(() => timelineStore.selectedWindTimestamp, () => updateWindLayer())
 watch(() => timelineStore.windOptions, (opts) => {
   windParticleLayer?.updateOptions(opts)
 }, { deep: true })
+
+// --- 温度图层（raster 瓦片） ---
+const TEMP_SOURCE_ID = 'temp-source'
+const TEMP_LAYER_ID = 'temp-layer'
+
+function updateTempLayer() {
+  if (!map || !map.isStyleLoaded()) {
+    if (map)
+      map.once('idle', updateTempLayer)
+    return
+  }
+
+  // 清除旧图层
+  if (map.getLayer(TEMP_LAYER_ID))
+    map.removeLayer(TEMP_LAYER_ID)
+  if (map.getSource(TEMP_SOURCE_ID))
+    map.removeSource(TEMP_SOURCE_ID)
+
+  if (!timelineStore.showTemp)
+    return
+
+  const ts = timelineStore.selectedTempTimestamp
+  if (!ts)
+    return
+
+  const level = timelineStore.tempLevel
+  const url = `${props.serverUrl}/atmos-tiles/temp/${level}/{z}/{x}/{y}/${ts}.png`
+
+  map.addSource(TEMP_SOURCE_ID, {
+    type: 'raster',
+    tiles: [url],
+    tileSize: 256,
+    minzoom: 3,
+    maxzoom: 8,
+  })
+
+  map.addLayer({
+    id: TEMP_LAYER_ID,
+    type: 'raster',
+    source: TEMP_SOURCE_ID,
+    paint: {
+      'raster-opacity': timelineStore.tempOpacity,
+    },
+  }, 'country-boundaries-outline-layer')
+}
+
+watch(() => timelineStore.showTemp, async () => {
+  if (timelineStore.showTemp) {
+    await timelineStore.fetchTempManifests(props.serverUrl)
+  }
+  updateTempLayer()
+})
+watch(() => timelineStore.selectedTempTimestamp, () => updateTempLayer())
+watch(() => timelineStore.tempLevel, async () => {
+  timelineStore.resetTempManifests()
+  if (timelineStore.showTemp)
+    await timelineStore.fetchTempManifests(props.serverUrl)
+  updateTempLayer()
+})
+watch(() => timelineStore.tempOpacity, (v) => {
+  if (map && map.getLayer(TEMP_LAYER_ID))
+    map.setPaintProperty(TEMP_LAYER_ID, 'raster-opacity', v)
+})
+
+// --- 云量图层（raster 瓦片） ---
+const CLOUD_SOURCE_ID = 'cloud-source'
+const CLOUD_LAYER_ID = 'cloud-layer'
+
+function updateCloudLayer() {
+  if (!map || !map.isStyleLoaded()) {
+    if (map)
+      map.once('idle', updateCloudLayer)
+    return
+  }
+
+  if (map.getLayer(CLOUD_LAYER_ID))
+    map.removeLayer(CLOUD_LAYER_ID)
+  if (map.getSource(CLOUD_SOURCE_ID))
+    map.removeSource(CLOUD_SOURCE_ID)
+
+  if (!timelineStore.showCloud)
+    return
+
+  const ts = timelineStore.selectedCloudTimestamp
+  if (!ts)
+    return
+
+  const type = timelineStore.cloudType
+  const url = `${props.serverUrl}/atmos-tiles/${type}/atmos/{z}/{x}/{y}/${ts}.png`
+
+  map.addSource(CLOUD_SOURCE_ID, {
+    type: 'raster',
+    tiles: [url],
+    tileSize: 256,
+    minzoom: 3,
+    maxzoom: 8,
+  })
+
+  map.addLayer({
+    id: CLOUD_LAYER_ID,
+    type: 'raster',
+    source: CLOUD_SOURCE_ID,
+    paint: {
+      'raster-opacity': timelineStore.cloudOpacity,
+    },
+  }, 'country-boundaries-outline-layer')
+}
+
+watch(() => timelineStore.showCloud, async () => {
+  if (timelineStore.showCloud) {
+    await timelineStore.fetchCloudManifests(props.serverUrl)
+  }
+  updateCloudLayer()
+})
+watch(() => timelineStore.selectedCloudTimestamp, () => updateCloudLayer())
+watch(() => timelineStore.cloudType, async () => {
+  timelineStore.resetCloudManifests()
+  if (timelineStore.showCloud)
+    await timelineStore.fetchCloudManifests(props.serverUrl)
+  updateCloudLayer()
+})
+watch(() => timelineStore.cloudOpacity, (v) => {
+  if (map && map.getLayer(CLOUD_LAYER_ID))
+    map.setPaintProperty(CLOUD_LAYER_ID, 'raster-opacity', v)
+})
 
 // --- 台风图层（用 SVG overlay 渲染，浮在风力粒子 canvas 之上）---
 let stormPopup: maplibregl.Popup | null = null
@@ -1192,6 +1323,12 @@ watch(() => timelineStore.mapProjection, (newProjection) => {
 onUnmounted(() => {
   closeGlowIndexPopup()
   destroyWindLayer()
+  for (const id of [TEMP_LAYER_ID, TEMP_SOURCE_ID, CLOUD_LAYER_ID, CLOUD_SOURCE_ID]) {
+    if (map && map.getLayer(id))
+      map.removeLayer(id)
+    if (map && map.getSource(id))
+      map.removeSource(id)
+  }
   if (stormPopup) {
     stormPopup.remove()
     stormPopup = null

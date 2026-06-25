@@ -16,6 +16,12 @@ export type TimelineControlStyle = 'classic' | 'ruler'
 
 export interface ChromaticSkyResource { date: string, event: string }
 
+// --- 大气图层类型 ---
+// 温度层级 token：2m + 8 个等压面
+export type TempLevel = '2m' | '1000hPa' | '850hPa' | '700hPa' | '500hPa' | '300hPa' | '250hPa' | '200hPa' | '100hPa'
+// 云量类型 token：总/低/中/高 云量
+export type CloudType = 'tcdc' | 'lcdc' | 'mcdc' | 'hcdc'
+
 // --- 台风相关类型 ---
 export type StormCode = 'D' | 'S' | '1' | '2' | '3' | '4' | '5' | 'ST' | string
 
@@ -62,6 +68,8 @@ export interface StormTrack {
 }
 
 const WIND_LEVEL = '850hPa'
+const DEFAULT_TEMP_LEVEL: TempLevel = '2m'
+const DEFAULT_CLOUD_TYPE: CloudType = 'tcdc'
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
@@ -103,6 +111,18 @@ export const useTimelineStore = defineStore('timeline', () => {
     colorBySpeed: false,
     zoomParams: {},
   }))
+  // --- 温度图层 ---
+  const showTemp = useLocalStorage<boolean>('ze-show-temp', false)
+  const tempTimestamps = ref<number[]>([])
+  const selectedTempTimestamp = ref<number | null>(null)
+  const tempLevel = useLocalStorage<TempLevel>('ze-temp-level', DEFAULT_TEMP_LEVEL)
+  const tempOpacity = useLocalStorage<number>('ze-temp-opacity', 0.6)
+  // --- 云量图层 ---
+  const showCloud = useLocalStorage<boolean>('ze-show-cloud', false)
+  const cloudTimestamps = ref<number[]>([])
+  const selectedCloudTimestamp = ref<number | null>(null)
+  const cloudType = useLocalStorage<CloudType>('ze-cloud-type', DEFAULT_CLOUD_TYPE)
+  const cloudOpacity = useLocalStorage<number>('ze-cloud-opacity', 0.7)
   // --- 台风图层 ---
   const showTyphoon = useLocalStorage<boolean>('ze-show-typhoon', true)
   const activeStorms = ref<StormActiveItem[]>([])
@@ -243,7 +263,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     windFetchPromise = (async () => {
       const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
       try {
-        const response = await $fetch<{ timestamps: number[] }>(`${url}/wind-tiles/${WIND_LEVEL}/tiles_manifest.json`)
+        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/wind/${WIND_LEVEL}/tiles_manifest.json`)
         const ts = response.timestamps ?? []
         if (ts.length > 0) {
           windTimestamps.value = [...ts].sort((a, b) => a - b)
@@ -270,6 +290,94 @@ export const useTimelineStore = defineStore('timeline', () => {
       }
     })()
     return windFetchPromise
+  }
+
+  // --- 温度图层 Actions ---
+  let tempFetchPromise: Promise<void> | null = null
+
+  async function fetchTempManifests(baseUrl?: string) {
+    if (tempFetchPromise)
+      return tempFetchPromise
+    tempFetchPromise = (async () => {
+      const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
+      try {
+        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/temp/${tempLevel.value}/tiles_manifest.json`)
+        const ts = response.timestamps ?? []
+        if (ts.length > 0) {
+          tempTimestamps.value = [...ts].sort((a, b) => a - b)
+          if (!tempTimestamps.value.includes(selectedTempTimestamp.value ?? 0)) {
+            const target = selectedTimestamp.value ?? tempTimestamps.value[tempTimestamps.value.length - 1]!
+            let closest = tempTimestamps.value[tempTimestamps.value.length - 1]!
+            let minDiff = Infinity
+            for (const t of tempTimestamps.value) {
+              const diff = Math.abs(t - target)
+              if (diff < minDiff) {
+                minDiff = diff
+                closest = t
+              }
+            }
+            selectedTempTimestamp.value = closest
+          }
+        }
+      }
+      catch (e) {
+        console.error('加载温度清单失败:', e)
+      }
+      finally {
+        tempFetchPromise = null
+      }
+    })()
+    return tempFetchPromise
+  }
+
+  function resetTempManifests() {
+    tempTimestamps.value = []
+    selectedTempTimestamp.value = null
+    tempFetchPromise = null
+  }
+
+  // --- 云量图层 Actions ---
+  let cloudFetchPromise: Promise<void> | null = null
+
+  async function fetchCloudManifests(baseUrl?: string) {
+    if (cloudFetchPromise)
+      return cloudFetchPromise
+    cloudFetchPromise = (async () => {
+      const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
+      try {
+        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${cloudType.value}/atmos/tiles_manifest.json`)
+        const ts = response.timestamps ?? []
+        if (ts.length > 0) {
+          cloudTimestamps.value = [...ts].sort((a, b) => a - b)
+          if (!cloudTimestamps.value.includes(selectedCloudTimestamp.value ?? 0)) {
+            const target = selectedTimestamp.value ?? cloudTimestamps.value[cloudTimestamps.value.length - 1]!
+            let closest = cloudTimestamps.value[cloudTimestamps.value.length - 1]!
+            let minDiff = Infinity
+            for (const t of cloudTimestamps.value) {
+              const diff = Math.abs(t - target)
+              if (diff < minDiff) {
+                minDiff = diff
+                closest = t
+              }
+            }
+            selectedCloudTimestamp.value = closest
+          }
+        }
+      }
+      catch (e) {
+        console.error('加载云量清单失败:', e)
+      }
+      finally {
+        cloudFetchPromise = null
+      }
+    })()
+    return cloudFetchPromise
+  }
+
+  function resetCloudManifests() {
+    cloudTimestamps.value = []
+    selectedCloudTimestamp.value = null
+    cloudFetchPromise = null
   }
 
   // --- 台风图层 Actions ---
@@ -510,6 +618,16 @@ export const useTimelineStore = defineStore('timeline', () => {
     selectedWindTimestamp,
     windCurrentZoom,
     windOptions,
+    showTemp,
+    tempTimestamps,
+    selectedTempTimestamp,
+    tempLevel,
+    tempOpacity,
+    showCloud,
+    cloudTimestamps,
+    selectedCloudTimestamp,
+    cloudType,
+    cloudOpacity,
     showTyphoon,
     activeStorms,
     stormTracks,
@@ -541,6 +659,10 @@ export const useTimelineStore = defineStore('timeline', () => {
     fetchChromaticSkyManifest,
     setChromaticSkySelection,
     fetchWindManifests: fetchWindTimestamps,
+    fetchTempManifests,
+    resetTempManifests,
+    fetchCloudManifests,
+    resetCloudManifests,
     fetchActiveStorms,
     refreshStormTracks,
   }
