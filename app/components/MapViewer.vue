@@ -752,15 +752,16 @@ function updateTempLayer() {
   if (!ts)
     return
 
-  const level = timelineStore.tempLevel
-  const url = `${props.serverUrl}/atmos-tiles/temp/${level}/{z}/{x}/{y}/${ts}.png`
+  const level = '850hPa'
+  const variable = timelineStore.tempVariable
+  const url = [props.serverUrl, 'atmos-tiles', variable, level, '{z}', '{x}', '{y}', `${ts}.png`].join('/')
 
   map.addSource(TEMP_SOURCE_ID, {
     type: 'raster',
     tiles: [url],
     tileSize: 256,
     minzoom: 3,
-    maxzoom: 8,
+    maxzoom: 4,
   })
 
   map.addLayer({
@@ -780,7 +781,7 @@ watch(() => timelineStore.showTemp, async () => {
   updateTempLayer()
 })
 watch(() => timelineStore.selectedTempTimestamp, () => updateTempLayer())
-watch(() => timelineStore.tempLevel, async () => {
+watch(() => timelineStore.tempVariable, async () => {
   timelineStore.resetTempManifests()
   if (timelineStore.showTemp)
     await timelineStore.fetchTempManifests(props.serverUrl)
@@ -815,14 +816,16 @@ function updateCloudLayer() {
     return
 
   const type = timelineStore.cloudType
-  const url = `${props.serverUrl}/atmos-tiles/${type}/atmos/{z}/{x}/{y}/${ts}.png`
+  const variable = timelineStore.cloudVariable
+  const subPath = variable === 'vis' ? 'vis/atmos' : `${type}/atmos`
+  const url = [props.serverUrl, 'atmos-tiles', subPath, '{z}', '{x}', '{y}', `${ts}.png`].join('/')
 
   map.addSource(CLOUD_SOURCE_ID, {
     type: 'raster',
     tiles: [url],
     tileSize: 256,
     minzoom: 3,
-    maxzoom: 8,
+    maxzoom: 4,
   })
 
   map.addLayer({
@@ -843,6 +846,12 @@ watch(() => timelineStore.showCloud, async () => {
 })
 watch(() => timelineStore.selectedCloudTimestamp, () => updateCloudLayer())
 watch(() => timelineStore.cloudType, async () => {
+  timelineStore.resetCloudManifests()
+  if (timelineStore.showCloud)
+    await timelineStore.fetchCloudManifests(props.serverUrl)
+  updateCloudLayer()
+})
+watch(() => timelineStore.cloudVariable, async () => {
   timelineStore.resetCloudManifests()
   if (timelineStore.showCloud)
     await timelineStore.fetchCloudManifests(props.serverUrl)

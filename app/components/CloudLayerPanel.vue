@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { CloudType } from '~/composables/timeline'
+import type { CloudType, CloudVariable } from '~/composables/timeline'
 import { useTimelineStore } from '~/composables/timeline'
 
 const timelineStore = useTimelineStore()
@@ -11,6 +11,24 @@ const CLOUD_TYPES: { value: CloudType, label: string, desc: string }[] = [
   { value: 'mcdc', label: '中云量', desc: '中层云' },
   { value: 'hcdc', label: '高云量', desc: '高层云' },
 ]
+
+const CLOUD_VARIABLES: { value: CloudVariable, label: string, unit: string }[] = [
+  { value: 'cloud', label: '云量', unit: '%' },
+  { value: 'vis', label: '能见度', unit: 'km' },
+]
+
+const currentCloudVariable = computed(() =>
+  CLOUD_VARIABLES.find(v => v.value === timelineStore.cloudVariable) ?? CLOUD_VARIABLES[0]!,
+)
+
+async function selectCloudVariable(v: CloudVariable) {
+  if (timelineStore.cloudVariable === v)
+    return
+  timelineStore.cloudVariable = v
+  timelineStore.resetCloudManifests()
+  if (timelineStore.showCloud)
+    await timelineStore.fetchCloudManifests()
+}
 
 function formatCloudTime(ts: number) {
   return new Date(ts * 1000).toLocaleString('zh-CN', {
@@ -61,8 +79,8 @@ async function togglePanel() {
         <div class="space-y-3">
           <div>
             <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
-              云量图层
-              <span class="text-xs text-gray-400 font-normal ml-1">%</span>
+              {{ currentCloudVariable.label }}图层
+              <span class="text-xs text-gray-400 font-normal ml-1">{{ currentCloudVariable.unit }}</span>
             </h3>
             <!-- 总开关 -->
             <div class="flex items-center justify-between">
@@ -80,8 +98,23 @@ async function togglePanel() {
             </div>
 
             <template v-if="timelineStore.showCloud">
+              <!-- 变量切换 -->
+              <div class="mt-3 flex gap-1 bg-white/5 p-1 rounded-lg">
+                <button
+                  v-for="v in CLOUD_VARIABLES"
+                  :key="v.value"
+                  class="flex-1 py-1.5 text-xs rounded-md transition-colors duration-200"
+                  :class="timelineStore.cloudVariable === v.value
+                    ? 'bg-sky-600 text-white font-medium'
+                    : 'text-gray-400 hover:text-white'"
+                  @click="selectCloudVariable(v.value)"
+                >
+                  {{ v.label }}
+                </button>
+              </div>
+
               <!-- 云量类型选择 -->
-              <div class="mt-3">
+              <div v-if="timelineStore.cloudVariable === 'cloud'" class="mt-3">
                 <div class="text-xs text-gray-300 mb-1.5">
                   云量类型
                 </div>

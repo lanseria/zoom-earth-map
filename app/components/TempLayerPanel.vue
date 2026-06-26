@@ -1,21 +1,27 @@
 <script setup lang="ts">
-import type { TempLevel } from '~/composables/timeline'
+import type { TempVariable } from '~/composables/timeline'
 import { useTimelineStore } from '~/composables/timeline'
 
 const timelineStore = useTimelineStore()
 const isPanelOpen = ref(false)
 
-const TEMP_LEVELS: { value: TempLevel, label: string }[] = [
-  { value: '2m', label: '2m' },
-  { value: '1000hPa', label: '1000' },
-  { value: '850hPa', label: '850' },
-  { value: '700hPa', label: '700' },
-  { value: '500hPa', label: '500' },
-  { value: '300hPa', label: '300' },
-  { value: '250hPa', label: '250' },
-  { value: '200hPa', label: '200' },
-  { value: '100hPa', label: '100' },
+const TEMP_VARIABLES: { value: TempVariable, label: string, unit: string }[] = [
+  { value: 'temp', label: '温度', unit: '°C' },
+  { value: 'rh', label: '相对湿度', unit: '%' },
 ]
+
+const currentVariable = computed(() =>
+  TEMP_VARIABLES.find(v => v.value === timelineStore.tempVariable) ?? TEMP_VARIABLES[0]!,
+)
+
+async function selectVariable(v: TempVariable) {
+  if (timelineStore.tempVariable === v)
+    return
+  timelineStore.tempVariable = v
+  timelineStore.resetTempManifests()
+  if (timelineStore.showTemp)
+    await timelineStore.fetchTempManifests()
+}
 
 function formatTempTime(ts: number) {
   return new Date(ts * 1000).toLocaleString('zh-CN', {
@@ -66,8 +72,8 @@ async function togglePanel() {
         <div class="space-y-3">
           <div>
             <h3 class="text-lg font-semibold mb-2 pb-1 border-b border-gray-500/50">
-              温度图层
-              <span class="text-xs text-gray-400 font-normal ml-1">°C</span>
+              温湿度图层（850 hPa）
+              <span class="text-xs text-gray-400 font-normal ml-1">{{ currentVariable.unit }}</span>
             </h3>
             <!-- 总开关 -->
             <div class="flex items-center justify-between">
@@ -85,26 +91,19 @@ async function togglePanel() {
             </div>
 
             <template v-if="timelineStore.showTemp">
-              <!-- 层级选择 -->
-              <div class="mt-3">
-                <div class="text-xs mb-1.5 flex justify-between">
-                  <span class="text-gray-300">高度层级</span>
-                  <span class="text-gray-400">{{ timelineStore.tempLevel }}</span>
-                </div>
-                <div class="gap-1 grid grid-cols-3">
-                  <button
-                    v-for="lvl in TEMP_LEVELS"
-                    :key="lvl.value"
-                    class="text-xs py-1 rounded transition-colors duration-200"
-                    :class="timelineStore.tempLevel === lvl.value
-                      ? 'bg-orange-600 text-white font-medium'
-                      : 'bg-white/10 text-gray-400 hover:bg-white/20'"
-                    :title="lvl.label === '2m' ? '近地面 2 米' : `${lvl.label} hPa`"
-                    @click="timelineStore.tempLevel = lvl.value"
-                  >
-                    {{ lvl.label }}
-                  </button>
-                </div>
+              <!-- 变量切换 -->
+              <div class="mt-3 flex gap-1 bg-white/5 p-1 rounded-lg">
+                <button
+                  v-for="v in TEMP_VARIABLES"
+                  :key="v.value"
+                  class="flex-1 py-1.5 text-xs rounded-md transition-colors duration-200"
+                  :class="timelineStore.tempVariable === v.value
+                    ? 'bg-orange-600 text-white font-medium'
+                    : 'text-gray-400 hover:text-white'"
+                  @click="selectVariable(v.value)"
+                >
+                  {{ v.label }}
+                </button>
               </div>
 
               <!-- 时间选择 -->

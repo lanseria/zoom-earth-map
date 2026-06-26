@@ -17,10 +17,12 @@ export type TimelineControlStyle = 'classic' | 'ruler'
 export interface ChromaticSkyResource { date: string, event: string }
 
 // --- 大气图层类型 ---
-// 温度层级 token：2m + 8 个等压面
-export type TempLevel = '2m' | '1000hPa' | '850hPa' | '700hPa' | '500hPa' | '300hPa' | '250hPa' | '200hPa' | '100hPa'
+// 温度/湿度变量 token
+export type TempVariable = 'temp' | 'rh'
 // 云量类型 token：总/低/中/高 云量
 export type CloudType = 'tcdc' | 'lcdc' | 'mcdc' | 'hcdc'
+// 云量/能见度变量 token
+export type CloudVariable = 'cloud' | 'vis'
 
 // --- 台风相关类型 ---
 export type StormCode = 'D' | 'S' | '1' | '2' | '3' | '4' | '5' | 'ST' | string
@@ -68,8 +70,10 @@ export interface StormTrack {
 }
 
 const WIND_LEVEL = '850hPa'
-const DEFAULT_TEMP_LEVEL: TempLevel = '2m'
+const TEMP_LEVEL = '850hPa'
+const DEFAULT_TEMP_VARIABLE: TempVariable = 'temp'
 const DEFAULT_CLOUD_TYPE: CloudType = 'tcdc'
+const DEFAULT_CLOUD_VARIABLE: CloudVariable = 'cloud'
 
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
@@ -115,13 +119,14 @@ export const useTimelineStore = defineStore('timeline', () => {
   const showTemp = useLocalStorage<boolean>('ze-show-temp', false)
   const tempTimestamps = ref<number[]>([])
   const selectedTempTimestamp = ref<number | null>(null)
-  const tempLevel = useLocalStorage<TempLevel>('ze-temp-level', DEFAULT_TEMP_LEVEL)
+  const tempVariable = useLocalStorage<TempVariable>('ze-temp-variable', DEFAULT_TEMP_VARIABLE)
   const tempOpacity = useLocalStorage<number>('ze-temp-opacity', 0.6)
   // --- 云量图层 ---
   const showCloud = useLocalStorage<boolean>('ze-show-cloud', false)
   const cloudTimestamps = ref<number[]>([])
   const selectedCloudTimestamp = ref<number | null>(null)
   const cloudType = useLocalStorage<CloudType>('ze-cloud-type', DEFAULT_CLOUD_TYPE)
+  const cloudVariable = useLocalStorage<CloudVariable>('ze-cloud-variable', DEFAULT_CLOUD_VARIABLE)
   const cloudOpacity = useLocalStorage<number>('ze-cloud-opacity', 0.7)
   // --- 台风图层 ---
   const showTyphoon = useLocalStorage<boolean>('ze-show-typhoon', true)
@@ -301,7 +306,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     tempFetchPromise = (async () => {
       const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
       try {
-        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/temp/${tempLevel.value}/tiles_manifest.json`)
+        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${tempVariable.value}/${TEMP_LEVEL}/tiles_manifest.json`)
         const ts = response.timestamps ?? []
         if (ts.length > 0) {
           tempTimestamps.value = [...ts].sort((a, b) => a - b)
@@ -345,7 +350,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     cloudFetchPromise = (async () => {
       const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
       try {
-        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${cloudType.value}/atmos/tiles_manifest.json`)
+        const subPath = cloudVariable.value === 'vis' ? 'vis/atmos' : `${cloudType.value}/atmos`
+        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${subPath}/tiles_manifest.json`)
         const ts = response.timestamps ?? []
         if (ts.length > 0) {
           cloudTimestamps.value = [...ts].sort((a, b) => a - b)
@@ -621,12 +627,13 @@ export const useTimelineStore = defineStore('timeline', () => {
     showTemp,
     tempTimestamps,
     selectedTempTimestamp,
-    tempLevel,
+    tempVariable,
     tempOpacity,
     showCloud,
     cloudTimestamps,
     selectedCloudTimestamp,
     cloudType,
+    cloudVariable,
     cloudOpacity,
     showTyphoon,
     activeStorms,
