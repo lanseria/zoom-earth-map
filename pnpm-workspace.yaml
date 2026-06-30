@@ -3,6 +3,17 @@ allowBuilds:
   esbuild: true
   unrs-resolver: true
 
+minimumReleaseAgeExclude:
+  - '@vue/compiler-core@3.5.39'
+  - '@vue/compiler-dom@3.5.39'
+  - '@vue/compiler-sfc@3.5.39'
+  - '@vue/compiler-ssr@3.5.39'
+  - '@vue/reactivity@3.5.39'
+  - '@vue/runtime-core@3.5.39'
+  - '@vue/runtime-dom@3.5.39'
+  - '@vue/server-renderer@3.5.39'
+  - '@vue/shared@3.5.39'
+  - vue@3.5.39
 # 原 .npmrc 迁移过来的配置（注意改为小驼峰）
 shamefullyHoist: true
 strictPeerDependencies: false
@@ -25,16 +36,16 @@ catalogs:
     '@nuxtjs/color-mode': ^4.0.1
     '@pinia/nuxt': ^0.11.3
     '@types/node': ^26.0.1
-    '@unocss/eslint-config': ^66.7.2
-    '@unocss/nuxt': ^66.7.2
+    '@unocss/eslint-config': ^66.7.3
+    '@unocss/nuxt': ^66.7.3
     '@vueuse/nuxt': ^14.3.0
     nuxt: ^4.4.8
-    unocss: ^66.7.2
+    unocss: ^66.7.3
     unplugin: ^3.2.0
     vite: ^8.0.16
   dev:
     '@antfu/eslint-config': ^9.1.0
-    eslint: ^10.5.0
+    eslint: ^10.6.0
     eslint-plugin-format: ^2.0.1
     typescript: ^6.0.3
     vue-tsc: ^3.3.5
@@ -51,15 +62,3 @@ onlyBuiltDependencies:
   - '@parcel/watcher'
   - esbuild
   - unrs-resolver
-
-minimumReleaseAgeExclude:
-  - '@vue/compiler-core@3.5.39'
-  - '@vue/compiler-dom@3.5.39'
-  - '@vue/compiler-sfc@3.5.39'
-  - '@vue/compiler-ssr@3.5.39'
-  - '@vue/reactivity@3.5.39'
-  - '@vue/runtime-core@3.5.39'
-  - '@vue/runtime-dom@3.5.39'
-  - '@vue/server-renderer@3.5.39'
-  - '@vue/shared@3.5.39'
-  - vue@3.5.39

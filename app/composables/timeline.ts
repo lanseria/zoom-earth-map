@@ -350,7 +350,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     cloudFetchPromise = (async () => {
       const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
       try {
-        const subPath = cloudVariable.value === 'vis' ? 'vis/atmos' : `${cloudType.value}/atmos`
+        const subPath = cloudVariable.value === 'vis' ? 'vis/surface' : `${cloudType.value}/atmos`
         const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${subPath}/tiles_manifest.json`)
         const ts = response.timestamps ?? []
         if (ts.length > 0) {

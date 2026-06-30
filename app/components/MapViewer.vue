@@ -817,7 +817,7 @@ function updateCloudLayer() {
 
   const type = timelineStore.cloudType
   const variable = timelineStore.cloudVariable
-  const subPath = variable === 'vis' ? 'vis/atmos' : `${type}/atmos`
+  const subPath = variable === 'vis' ? 'vis/surface' : `${type}/atmos`
   const url = [props.serverUrl, 'atmos-tiles', subPath, '{z}', '{x}', '{y}', `${ts}.png`].join('/')
 
   map.addSource(CLOUD_SOURCE_ID, {
