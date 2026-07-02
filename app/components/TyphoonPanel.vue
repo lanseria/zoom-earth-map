@@ -6,14 +6,18 @@ const timelineStore = useTimelineStore()
 const isPanelOpen = ref(false)
 
 const STORM_COLOR_BY_CODE: Record<string, string> = {
-  D: '#94a3b8',
-  S: '#22d3ee',
-  1: '#84cc16',
-  2: '#eab308',
-  3: '#f97316',
-  4: '#ef4444',
-  5: '#a855f7',
-  ST: '#dc2626',
+  D: '#0a84ff', // 热带低压
+  S: '#00f060', // 热带风暴
+  1: '#ffcc00', // 强热带风暴
+  SS: '#ffcc00', // Severe Tropical Storm（强热带风暴）
+  2: '#ff9400', // 台风
+  T: '#ff9400', // Typhoon（台风）
+  3: '#ff5900', // 强台风
+  ST: '#ff5900', // Very Strong Typhoon
+  4: '#ff0022', // 超强台风（暴力台风）
+  VT: '#ff0022', // Violent Typhoon（暴力台风）
+  5: '#FF55BB', // Cat 5
+  SU: '#FF55BB', // 超级台风
 }
 
 const STORM_COLOR_BY_SOURCE: Record<string, string> = {
@@ -84,6 +88,7 @@ function codeLabel(code: string) {
     4: '超强台风',
     5: 'Cat 5',
     ST: '强台风',
+    SU: '超级台风',
   }
   return map[code] ?? code
 }

@@ -43,6 +43,7 @@ const STORM_COLOR_BY_CODE: Record<string, string> = {
   4: '#ff0022', // 超强台风（暴力台风）
   VT: '#ff0022', // Violent Typhoon（暴力台风）
   5: '#FF55BB', // Cat 5
+  SU: '#FF55BB', // 超级台风
 }
 const STORM_COLOR_BY_SOURCE: Record<string, string> = {
   'zoom-earth': '#00b4d8',
@@ -72,6 +73,8 @@ const STORM_SVG_BY_CODE: Record<string, string> = {
   3: 'ST',
   VT: 'VT',
   4: 'VT',
+  5: 'SU',
+  SU: 'SU',
 }
 
 function stormActiveSvg(code: string): string | null {
@@ -1461,7 +1464,7 @@ defineExpose({
   animation: storm-breath 2.8s ease-in-out infinite;
   stroke-width: 2.5px;
 }
-/* SS/T/ST/VT 级别的活跃位置：SVG 图标持续逆时针旋转 */
+/* SS/T/ST/VT/SU 级别的活跃位置：SVG 图标持续逆时针旋转 */
 .typhoon-overlay .storm-active-svg {
   transform-origin: center;
   transform-box: fill-box;
