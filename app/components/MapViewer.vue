@@ -30,8 +30,8 @@ const mapContainer = ref(null)
 let map: maplibregl.Map
 let previousTimestamp: number | null = null
 
-// 通过运行时配置注入地图服务 API Key，避免硬编码入库
-const { mapTilerKey, tdtKey } = useRuntimeConfig().public
+// 通过运行时配置注入地图服务 API Key 与内网服务地址，避免硬编码入库
+const { mapTilerKey, tdtKey, cityDetailUrl, glowIndexApiUrl } = useRuntimeConfig().public
 
 // --- 台风图层配色与样式 ---
 const STORM_COLOR_BY_CODE: Record<string, string> = {
@@ -440,7 +440,11 @@ async function addCityMarkersLayerWithZoomLevels() {
         const [lon, lat] = geometry.coordinates
         const name = props?.name || ''
 
-        const url = `http://bmcr1-wtr-r1:3030/?lat=${lat}&lon=${lon}&name=${name}`
+        // 未配置详情页地址时跳过跳转
+        if (!cityDetailUrl)
+          return
+
+        const url = `${cityDetailUrl}?lat=${lat}&lon=${lon}&name=${name}`
         window.open(url, '_blank')
       }
     })
@@ -606,7 +610,10 @@ async function queryGlowIndex(lng: number, lat: number) {
 
   const [year, month, day] = [sel.date.slice(0, 4), sel.date.slice(4, 6), sel.date.slice(6, 8)]
   const dateStr = `${year}-${month}-${day}`
-  const apiUrl = `http://bmcr1-wtr-r1:8002/api/glow-index?lat=${lat.toFixed(4)}&lon=${lng.toFixed(4)}&event=${sel.event}&date=${dateStr}`
+  // 未配置 glow-index 服务地址时跳过查询
+  if (!glowIndexApiUrl)
+    return
+  const apiUrl = `${glowIndexApiUrl}?lat=${lat.toFixed(4)}&lon=${lng.toFixed(4)}&event=${sel.event}&date=${dateStr}`
 
   // 加载中 popup
   closeGlowIndexPopup()

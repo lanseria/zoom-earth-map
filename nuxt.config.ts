@@ -41,6 +41,10 @@ export default defineNuxtConfig({
       gisServerUrl: '',
       mapTilerKey: '',
       tdtKey: '',
+      // 城市点击跳转的天气详情页地址（形如 https://host:3030/?lat=...&lon=...&name=...）
+      cityDetailUrl: '',
+      // 火烧云 glow-index 查询 API 地址（形如 https://host:8002/api/glow-index）
+      glowIndexApiUrl: '',
     },
   },
 
