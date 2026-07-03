@@ -75,6 +75,25 @@ const DEFAULT_TEMP_VARIABLE: TempVariable = 'temp'
 const DEFAULT_CLOUD_TYPE: CloudType = 'tcdc'
 const DEFAULT_CLOUD_VARIABLE: CloudVariable = 'cloud'
 
+/**
+ * 从升序时间戳数组中找出最接近 target 的那个。
+ * 纯函数，无副作用，便于单独测试。
+ */
+export function findClosestTimestamp(timestamps: number[], target: number): number {
+  if (timestamps.length === 0)
+    return target
+  let closest = timestamps[0]!
+  let minDiff = Infinity
+  for (const t of timestamps) {
+    const diff = Math.abs(t - target)
+    if (diff < minDiff) {
+      minDiff = diff
+      closest = t
+    }
+  }
+  return closest
+}
+
 export const useTimelineStore = defineStore('timeline', () => {
   // --- STATE ---
   const timestamps = ref<number[]>([])
@@ -259,132 +278,80 @@ export const useTimelineStore = defineStore('timeline', () => {
     chromaticSkySelection.value = resource
   }
 
-  // --- 风力图层 Actions ---
-  let windFetchPromise: Promise<void> | null = null
+  // --- manifest 清单拉取：风力 / 温度 / 云量 共用同一套逻辑 ---
+  // 通用工厂：封装 inflight 去重、排序、对齐选中时间戳、错误处理，三者仅 URL 构造与目标 ref 不同。
+  function createManifestFetcher(opts: {
+    /** 相对于 gisServerUrl 的 manifest 路径（不含前缀），按需读取当前变量 */
+    relativeUrl: () => string
+    /** 存放拉取到的时间戳列表 */
+    timestampsRef: Ref<number[]>
+    /** 当前选中的时间戳 */
+    selectedRef: Ref<number | null>
+    /** 错误日志文案 */
+    errorLabel: string
+  }) {
+    let inflight: Promise<void> | null = null
 
-  async function fetchWindTimestamps(baseUrl?: string) {
-    if (windFetchPromise)
-      return windFetchPromise
-    windFetchPromise = (async () => {
-      const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
-      try {
-        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/wind/${WIND_LEVEL}/tiles_manifest.json`)
-        const ts = response.timestamps ?? []
-        if (ts.length > 0) {
-          windTimestamps.value = [...ts].sort((a, b) => a - b)
-          if (!windTimestamps.value.includes(selectedWindTimestamp.value ?? 0)) {
-            const sat = selectedTimestamp.value ?? windTimestamps.value[windTimestamps.value.length - 1]!
-            let closest = windTimestamps.value[windTimestamps.value.length - 1]!
-            let minDiff = Infinity
-            for (const t of windTimestamps.value) {
-              const diff = Math.abs(t - sat)
-              if (diff < minDiff) {
-                minDiff = diff
-                closest = t
-              }
+    async function fetch(baseUrl?: string) {
+      if (inflight)
+        return inflight
+      inflight = (async () => {
+        const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
+        try {
+          const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${opts.relativeUrl()}/tiles_manifest.json`)
+          const ts = response.timestamps ?? []
+          if (ts.length > 0) {
+            const sorted = [...ts].sort((a, b) => a - b)
+            opts.timestampsRef.value = sorted
+            // 当前选中不在列表中时，对齐到最接近主时间轴的那一个
+            if (!sorted.includes(opts.selectedRef.value ?? 0)) {
+              const target = selectedTimestamp.value ?? sorted.at(-1)!
+              opts.selectedRef.value = findClosestTimestamp(sorted, target)
             }
-            selectedWindTimestamp.value = closest
           }
         }
-      }
-      catch (e) {
-        console.error('加载风力清单失败:', e)
-      }
-      finally {
-        windFetchPromise = null
-      }
-    })()
-    return windFetchPromise
+        catch (e) {
+          console.error(`${opts.errorLabel}:`, e)
+        }
+        finally {
+          inflight = null
+        }
+      })()
+      return inflight
+    }
+
+    function reset() {
+      opts.timestampsRef.value = []
+      opts.selectedRef.value = null
+      inflight = null
+    }
+
+    return { fetch, reset, _inflight: () => inflight }
   }
+
+  // --- 风力图层 Actions ---
+  const windManifest = createManifestFetcher({
+    relativeUrl: () => `wind/${WIND_LEVEL}`,
+    timestampsRef: windTimestamps,
+    selectedRef: selectedWindTimestamp,
+    errorLabel: '加载风力清单失败',
+  })
 
   // --- 温度图层 Actions ---
-  let tempFetchPromise: Promise<void> | null = null
-
-  async function fetchTempManifests(baseUrl?: string) {
-    if (tempFetchPromise)
-      return tempFetchPromise
-    tempFetchPromise = (async () => {
-      const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
-      try {
-        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${tempVariable.value}/${TEMP_LEVEL}/tiles_manifest.json`)
-        const ts = response.timestamps ?? []
-        if (ts.length > 0) {
-          tempTimestamps.value = [...ts].sort((a, b) => a - b)
-          if (!tempTimestamps.value.includes(selectedTempTimestamp.value ?? 0)) {
-            const target = selectedTimestamp.value ?? tempTimestamps.value[tempTimestamps.value.length - 1]!
-            let closest = tempTimestamps.value[tempTimestamps.value.length - 1]!
-            let minDiff = Infinity
-            for (const t of tempTimestamps.value) {
-              const diff = Math.abs(t - target)
-              if (diff < minDiff) {
-                minDiff = diff
-                closest = t
-              }
-            }
-            selectedTempTimestamp.value = closest
-          }
-        }
-      }
-      catch (e) {
-        console.error('加载温度清单失败:', e)
-      }
-      finally {
-        tempFetchPromise = null
-      }
-    })()
-    return tempFetchPromise
-  }
-
-  function resetTempManifests() {
-    tempTimestamps.value = []
-    selectedTempTimestamp.value = null
-    tempFetchPromise = null
-  }
+  const tempManifest = createManifestFetcher({
+    relativeUrl: () => `${tempVariable.value}/${TEMP_LEVEL}`,
+    timestampsRef: tempTimestamps,
+    selectedRef: selectedTempTimestamp,
+    errorLabel: '加载温度清单失败',
+  })
 
   // --- 云量图层 Actions ---
-  let cloudFetchPromise: Promise<void> | null = null
-
-  async function fetchCloudManifests(baseUrl?: string) {
-    if (cloudFetchPromise)
-      return cloudFetchPromise
-    cloudFetchPromise = (async () => {
-      const url = (baseUrl ?? useRuntimeConfig().public.gisServerUrl as string) || ''
-      try {
-        const subPath = cloudVariable.value === 'vis' ? 'vis/surface' : `${cloudType.value}/atmos`
-        const response = await $fetch<{ timestamps: number[] }>(`${url}/atmos-tiles/${subPath}/tiles_manifest.json`)
-        const ts = response.timestamps ?? []
-        if (ts.length > 0) {
-          cloudTimestamps.value = [...ts].sort((a, b) => a - b)
-          if (!cloudTimestamps.value.includes(selectedCloudTimestamp.value ?? 0)) {
-            const target = selectedTimestamp.value ?? cloudTimestamps.value[cloudTimestamps.value.length - 1]!
-            let closest = cloudTimestamps.value[cloudTimestamps.value.length - 1]!
-            let minDiff = Infinity
-            for (const t of cloudTimestamps.value) {
-              const diff = Math.abs(t - target)
-              if (diff < minDiff) {
-                minDiff = diff
-                closest = t
-              }
-            }
-            selectedCloudTimestamp.value = closest
-          }
-        }
-      }
-      catch (e) {
-        console.error('加载云量清单失败:', e)
-      }
-      finally {
-        cloudFetchPromise = null
-      }
-    })()
-    return cloudFetchPromise
-  }
-
-  function resetCloudManifests() {
-    cloudTimestamps.value = []
-    selectedCloudTimestamp.value = null
-    cloudFetchPromise = null
-  }
+  const cloudManifest = createManifestFetcher({
+    relativeUrl: () => cloudVariable.value === 'vis' ? 'vis/surface' : `${cloudType.value}/atmos`,
+    timestampsRef: cloudTimestamps,
+    selectedRef: selectedCloudTimestamp,
+    errorLabel: '加载云量清单失败',
+  })
 
   // --- 台风图层 Actions ---
   async function fetchActiveStorms() {
@@ -665,11 +632,11 @@ export const useTimelineStore = defineStore('timeline', () => {
     findClosestTimestampIndex,
     fetchChromaticSkyManifest,
     setChromaticSkySelection,
-    fetchWindManifests: fetchWindTimestamps,
-    fetchTempManifests,
-    resetTempManifests,
-    fetchCloudManifests,
-    resetCloudManifests,
+    fetchWindManifests: windManifest.fetch,
+    fetchTempManifests: tempManifest.fetch,
+    resetTempManifests: tempManifest.reset,
+    fetchCloudManifests: cloudManifest.fetch,
+    resetCloudManifests: cloudManifest.reset,
     fetchActiveStorms,
     refreshStormTracks,
   }
