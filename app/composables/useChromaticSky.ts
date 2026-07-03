@@ -1,5 +1,5 @@
-import type { Map } from 'maplibre-gl'
 // app/composables/useChromaticSky.ts
+import type { Map } from 'maplibre-gl'
 import maplibregl from 'maplibre-gl'
 import { createApp } from 'vue'
 import GlowIndexPopup from '~/components/GlowIndexPopup.vue'
