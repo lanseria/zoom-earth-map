@@ -39,6 +39,8 @@ export default defineNuxtConfig({
     // public 下的变量会暴露给前端
     public: {
       gisServerUrl: '',
+      mapTilerKey: '',
+      tdtKey: '',
     },
   },
 

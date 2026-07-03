@@ -2,10 +2,6 @@
 
 import type { StyleSpecification } from 'maplibre-gl'
 
-const apiKey = 'COzW8kKwrFCzdf13x98K'
-// --- 常量定义 ---
-const TDT_KEY = '8c1768e11fec4006319e69e4a2a58793' // 你的天地图 Key
-
 const BASE_MAP_TYPES = {
   VEC: 'vec', // 矢量
   IMG: 'img', // 影像
@@ -34,28 +30,31 @@ export const MAP_STYLE_OPTIONS: { name: string, id: BaseMapType }[] = [
   { name: '深色', id: BASE_MAP_TYPES.DARK }, // UI 选项
 ]
 
-// 统一的样式定义，包含所有图层源
-export const unifiedStyle: StyleSpecification = {
-  version: 8,
-  sprite: `https://api.maptiler.com/maps/streets-v2/sprite?key=${apiKey}`,
-  glyphs: `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${apiKey}`,
-  sources: {
-    'tdt-vec': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/vec_w/wmts?tk=${TDT_KEY}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
-    'tdt-cva': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/cva_w/wmts?tk=${TDT_KEY}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
-    'tdt-img': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/img_w/wmts?tk=${TDT_KEY}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
-    'tdt-cia': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/cia_w/wmts?tk=${TDT_KEY}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
-    'tdt-ter': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/ter_w/wmts?tk=${TDT_KEY}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
-    'tdt-cta': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/cta_w/wmts?tk=${TDT_KEY}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cta&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
-  },
-  layers: [
+// 构建统一底图样式的工厂：API Key 通过运行时配置注入，避免硬编码入库
+export function createMapStyle(opts: { mapTilerKey: string, tdtKey: string }): StyleSpecification {
+  const { mapTilerKey, tdtKey } = opts
+  return {
+    version: 8,
+    sprite: `https://api.maptiler.com/maps/streets-v2/sprite?key=${mapTilerKey}`,
+    glyphs: `https://api.maptiler.com/fonts/{fontstack}/{range}.pbf?key=${mapTilerKey}`,
+    sources: {
+      'tdt-vec': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/vec_w/wmts?tk=${tdtKey}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=vec&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
+      'tdt-cva': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/cva_w/wmts?tk=${tdtKey}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cva&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
+      'tdt-img': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/img_w/wmts?tk=${tdtKey}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=img&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
+      'tdt-cia': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/cia_w/wmts?tk=${tdtKey}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cia&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
+      'tdt-ter': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/ter_w/wmts?tk=${tdtKey}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ter&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
+      'tdt-cta': { type: 'raster', tiles: [`https://t0.tianditu.gov.cn/cta_w/wmts?tk=${tdtKey}&SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=cta&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}`], tileSize: 256 },
+    },
+    layers: [
     // --- 底图层 ---
-    { id: 'background', type: 'background', paint: { 'background-color': '#333333' } }, // 保留一个背景色作为备用
-    { id: 'tdt-vec-layer', type: 'raster', source: 'tdt-vec', layout: { visibility: 'none' } },
-    { id: 'tdt-img-layer', type: 'raster', source: 'tdt-img', layout: { visibility: 'none' } },
-    { id: 'tdt-ter-layer', type: 'raster', source: 'tdt-ter', layout: { visibility: 'none' } },
-    // --- 注记层 (放在底图之上) ---
-    { id: 'tdt-cva-layer', type: 'raster', source: 'tdt-cva', layout: { visibility: 'none' } }, // 矢量注记
-    { id: 'tdt-cia-layer', type: 'raster', source: 'tdt-cia', layout: { visibility: 'none' } }, // 影像注记
-    { id: 'tdt-cta-layer', type: 'raster', source: 'tdt-cta', layout: { visibility: 'none' } }, // 地形注记
-  ],
+      { id: 'background', type: 'background', paint: { 'background-color': '#333333' } }, // 保留一个背景色作为备用
+      { id: 'tdt-vec-layer', type: 'raster', source: 'tdt-vec', layout: { visibility: 'none' } },
+      { id: 'tdt-img-layer', type: 'raster', source: 'tdt-img', layout: { visibility: 'none' } },
+      { id: 'tdt-ter-layer', type: 'raster', source: 'tdt-ter', layout: { visibility: 'none' } },
+      // --- 注记层 (放在底图之上) ---
+      { id: 'tdt-cva-layer', type: 'raster', source: 'tdt-cva', layout: { visibility: 'none' } }, // 矢量注记
+      { id: 'tdt-cia-layer', type: 'raster', source: 'tdt-cia', layout: { visibility: 'none' } }, // 影像注记
+      { id: 'tdt-cta-layer', type: 'raster', source: 'tdt-cta', layout: { visibility: 'none' } }, // 地形注记
+    ],
+  }
 }

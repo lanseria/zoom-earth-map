@@ -6,7 +6,7 @@ import maplibregl from 'maplibre-gl'
 import { createApp } from 'vue'
 import GlowIndexPopup from '~/components/GlowIndexPopup.vue'
 import { useTimelineStore } from '~/composables/timeline'
-import { SATELLITES, unifiedStyle } from '~/constants/map'
+import { createMapStyle, SATELLITES } from '~/constants/map'
 import { WindParticleLayer } from '~/utils/wind-particles'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
@@ -29,6 +29,9 @@ const timelineStore = useTimelineStore()
 const mapContainer = ref(null)
 let map: maplibregl.Map
 let previousTimestamp: number | null = null
+
+// 通过运行时配置注入地图服务 API Key，避免硬编码入库
+const { mapTilerKey, tdtKey } = useRuntimeConfig().public
 
 // --- 台风图层配色与样式 ---
 const STORM_COLOR_BY_CODE: Record<string, string> = {
@@ -173,7 +176,7 @@ onMounted(() => {
     return
   map = markRaw(new maplibregl.Map({
     container: mapContainer.value,
-    style: unifiedStyle,
+    style: createMapStyle({ mapTilerKey, tdtKey }),
     center: [120, 30],
     zoom: 5,
     minZoom: 3,
