@@ -403,15 +403,32 @@ export const useTimelineStore = defineStore('timeline', () => {
   }
 
   /**
-   * 导入一条第三方预测批次到指定台风，并即时合并到已加载的 track 中。
+   * 重建指定台风 track.forecasts 的导入部分，使其与 importedForecasts 完全一致。
+   * 以 importedForecasts 为唯一数据源：剔除当前 track.forecasts 中所有「已导入」批次，
+   * 再把最新的导入列表重新追加。
+   */
+  function syncImportedToTrack(stormId: string) {
+    const track = stormTracks.value[stormId]
+    if (!track)
+      return
+    const importedSources = new Set(
+      (importedForecasts.value[stormId] ?? []).map(b => b.source),
+    )
+    // 排除掉所有属于导入来源的旧批次（既含已被替换/删除的，也含合并进来的同名实时源——
+    // 但实时源不会用第三方来源 id，故不会误伤）
+    const kept = track.forecasts.filter(f => !importedSources.has(f.source))
+    track.forecasts = [...kept, ...(importedForecasts.value[stormId] ?? [])]
+  }
+
+  /**
+   * 导入一条第三方预测批次到指定台风。
+   * 同一来源（source）的旧导入会被新批次替换，避免累积与 localStorage 膨胀。
    */
   function importStormForecast(stormId: string, batch: StormForecastBatch) {
     const list = importedForecasts.value[stormId] ?? []
-    importedForecasts.value[stormId] = [...list, batch]
-    // 即时合并到已加载的 track（无需重新拉取即可渲染）
-    const track = stormTracks.value[stormId]
-    if (track)
-      track.forecasts = [...track.forecasts, batch]
+    const filtered = list.filter(b => b.source !== batch.source)
+    importedForecasts.value[stormId] = [...filtered, batch]
+    syncImportedToTrack(stormId)
   }
 
   /** 删除指定台风的第 index 条导入预测 */
@@ -419,21 +436,14 @@ export const useTimelineStore = defineStore('timeline', () => {
     const list = importedForecasts.value[stormId]
     if (!list || index < 0 || index >= list.length)
       return
-    const removed = list[index]!
     importedForecasts.value[stormId] = list.filter((_, i) => i !== index)
-    // 从已加载的 track 中同步移除
-    const track = stormTracks.value[stormId]
-    if (track)
-      track.forecasts = track.forecasts.filter(f => f !== removed)
+    syncImportedToTrack(stormId)
   }
 
   /** 清空指定台风的所有第三方导入预测 */
   function clearImportedForecasts(stormId: string) {
-    const imported = importedForecasts.value[stormId] ?? []
     importedForecasts.value[stormId] = []
-    const track = stormTracks.value[stormId]
-    if (track && imported.length > 0)
-      track.forecasts = track.forecasts.filter(f => !imported.includes(f))
+    syncImportedToTrack(stormId)
   }
 
   /**
