@@ -49,6 +49,7 @@ export function useStormOverlay(getMap: MapGetter) {
   }
   const STORM_COLOR_BY_SOURCE: Record<string, string> = {
     'zoom-earth': '#00b4d8',
+    'google-weather-lab': '#34d399',
     'cma': '#f87171',
     'jma': '#f4845f',
     'jtwc': '#a3e635',

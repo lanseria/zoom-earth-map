@@ -159,6 +159,8 @@ export const useTimelineStore = defineStore('timeline', () => {
     'ze-storm-forecast-sources',
     () => ({ 'zoom-earth': true }),
   )
+  // 第三方导入的预测路径（按台风 id 分组），持久化到 localStorage
+  const importedForecasts = useLocalStorage<Record<string, StormForecastBatch[]>>('ze-imported-storm-forecasts', {})
 
   const isPreloading = ref(false)
   const mapViewerInstance = ref<InstanceType<typeof MapViewer> | null>(null)
@@ -376,6 +378,10 @@ export const useTimelineStore = defineStore('timeline', () => {
               return
             try {
               const t = await $fetch<StormTrack>(`${base}/storm/tracks/${s.id}.json`)
+              // 合并第三方导入的预测路径（持久化在 localStorage）
+              const imported = importedForecasts.value[s.id]
+              if (imported && imported.length > 0)
+                t.forecasts = [...t.forecasts, ...imported]
               stormTracks.value[s.id] = t
             }
             catch (e) {
@@ -394,6 +400,40 @@ export const useTimelineStore = defineStore('timeline', () => {
     stormTracks.value = {}
     stormTracksFetchedAt.value = null
     return fetchActiveStorms()
+  }
+
+  /**
+   * 导入一条第三方预测批次到指定台风，并即时合并到已加载的 track 中。
+   */
+  function importStormForecast(stormId: string, batch: StormForecastBatch) {
+    const list = importedForecasts.value[stormId] ?? []
+    importedForecasts.value[stormId] = [...list, batch]
+    // 即时合并到已加载的 track（无需重新拉取即可渲染）
+    const track = stormTracks.value[stormId]
+    if (track)
+      track.forecasts = [...track.forecasts, batch]
+  }
+
+  /** 删除指定台风的第 index 条导入预测 */
+  function removeImportedForecast(stormId: string, index: number) {
+    const list = importedForecasts.value[stormId]
+    if (!list || index < 0 || index >= list.length)
+      return
+    const removed = list[index]!
+    importedForecasts.value[stormId] = list.filter((_, i) => i !== index)
+    // 从已加载的 track 中同步移除
+    const track = stormTracks.value[stormId]
+    if (track)
+      track.forecasts = track.forecasts.filter(f => f !== removed)
+  }
+
+  /** 清空指定台风的所有第三方导入预测 */
+  function clearImportedForecasts(stormId: string) {
+    const imported = importedForecasts.value[stormId] ?? []
+    importedForecasts.value[stormId] = []
+    const track = stormTracks.value[stormId]
+    if (track && imported.length > 0)
+      track.forecasts = track.forecasts.filter(f => !imported.includes(f))
   }
 
   /**
@@ -609,6 +649,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     stormTracksFetchedAt,
     stormVisibility,
     stormForecastSources,
+    importedForecasts,
     // Getters
     selectedTimestamp,
     formattedDate,
@@ -639,6 +680,9 @@ export const useTimelineStore = defineStore('timeline', () => {
     resetCloudManifests: cloudManifest.reset,
     fetchActiveStorms,
     refreshStormTracks,
+    importStormForecast,
+    removeImportedForecast,
+    clearImportedForecasts,
   }
 })
 

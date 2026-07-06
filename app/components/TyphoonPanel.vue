@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { StormTrack } from '~/composables/timeline'
 import { useTimelineStore } from '~/composables/timeline'
+import { IMPORT_SOURCE_ID, IMPORT_TYPES } from '~/utils/stormImport'
 
 const timelineStore = useTimelineStore()
 const isPanelOpen = ref(false)
-
 const STORM_COLOR_BY_CODE: Record<string, string> = {
   D: '#0a84ff', // 热带低压
   S: '#00f060', // 热带风暴
@@ -22,6 +22,7 @@ const STORM_COLOR_BY_CODE: Record<string, string> = {
 
 const STORM_COLOR_BY_SOURCE: Record<string, string> = {
   'zoom-earth': '#00b4d8',
+  'google-weather-lab': '#34d399',
   'cma': '#f87171',
   'jma': '#f4845f',
   'jtwc': '#a3e635',
@@ -32,6 +33,7 @@ const STORM_COLOR_BY_SOURCE: Record<string, string> = {
 
 const SOURCE_LABELS: Record<string, string> = {
   'zoom-earth': 'zoom.earth',
+  'google-weather-lab': 'Google',
   'cma': 'CMA',
   'jma': 'JMA',
   'jtwc': 'JTWC',
@@ -111,6 +113,70 @@ const fetchedAtLabel = computed(() => {
     timeZone: 'Asia/Shanghai',
   })
 })
+
+// --- 第三方预测路径导入 ---
+const importTypeId = ref(IMPORT_TYPES[0]!.id)
+const importStormId = ref<string>('')
+const importMessage = ref<{ type: 'success' | 'error', text: string } | null>(null)
+const fileInput = ref<HTMLInputElement | null>(null)
+
+const importType = computed(() =>
+  IMPORT_TYPES.find(t => t.id === importTypeId.value) ?? IMPORT_TYPES[0]!,
+)
+
+const importedList = computed(() =>
+  timelineStore.importedForecasts[importStormId.value] ?? [],
+)
+
+function formatIssuedAtBjt(iso: string) {
+  if (!iso)
+    return '未知时间'
+  return new Date(iso).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Shanghai',
+  })
+}
+
+function triggerFileInput() {
+  if (!importStormId.value) {
+    importMessage.value = { type: 'error', text: '请先选择台风' }
+    return
+  }
+  fileInput.value?.click()
+}
+
+async function handleFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file)
+    return
+  try {
+    const text = await file.text()
+    const batch = importType.value.parse(text)
+    timelineStore.importStormForecast(importStormId.value, batch)
+    // 确保导入源默认可见
+    timelineStore.stormForecastSources[IMPORT_SOURCE_ID] = true
+    importMessage.value = {
+      type: 'success',
+      text: `导入成功（${batch.points.length} 个点位）`,
+    }
+  }
+  catch (err: any) {
+    importMessage.value = { type: 'error', text: `导入失败：${err?.message ?? err}` }
+  }
+  finally {
+    // 重置 input，便于重复导入同一文件
+    input.value = ''
+  }
+}
+
+function removeImported(index: number) {
+  timelineStore.removeImportedForecast(importStormId.value, index)
+}
 </script>
 
 <template>
@@ -256,10 +322,96 @@ const fetchedAtLabel = computed(() => {
               >
                 <span
                   class="rounded-full h-2 w-2"
-                  :style="{ backgroundColor: sourceColor(source) }"
+                  :style="(timelineStore.stormForecastSources[source] ?? false)
+                    ? { backgroundColor: 'white' } : { backgroundColor: sourceColor(source) }"
                 />
                 <span>{{ sourceLabel(source) }}</span>
               </button>
+            </div>
+          </div>
+
+          <!-- 导入预测路径 -->
+          <div class="pt-2 border-t border-gray-500/50 space-y-2">
+            <div class="text-xs text-gray-400 font-semibold">
+              导入预测路径
+            </div>
+
+            <!-- 类型选择 -->
+            <select
+              v-model="importTypeId"
+              class="text-xs text-white px-2 py-1 border border-gray-600/50 rounded bg-dark-900/60 w-full"
+            >
+              <option v-for="t in IMPORT_TYPES" :key="t.id" :value="t.id">
+                {{ t.label }}
+              </option>
+            </select>
+
+            <!-- 台风选择 -->
+            <select
+              v-model="importStormId"
+              class="text-xs text-white px-2 py-1 border border-gray-600/50 rounded bg-dark-900/60 w-full"
+              :disabled="stormList.length === 0"
+            >
+              <option value="" disabled>
+                {{ stormList.length === 0 ? '无活跃台风' : '选择台风' }}
+              </option>
+              <option v-for="storm in stormList" :key="storm.id" :value="storm.id">
+                {{ trackOf(storm.id)?.info.name ?? storm.id }}
+              </option>
+            </select>
+
+            <!-- 导入按钮 -->
+            <input
+              ref="fileInput"
+              type="file"
+              class="hidden"
+              :accept="importType.accept"
+              @change="handleFileChange"
+            >
+            <button
+              class="text-xs px-2 py-1 border border-gray-600/50 rounded flex gap-1.5 w-full transition-colors items-center hover:bg-dark-900/60"
+              :disabled="!importStormId"
+              @click="triggerFileInput"
+            >
+              <div class="i-carbon-cloud-import" />
+              <span>导入 {{ importType.label }} 文件</span>
+            </button>
+
+            <!-- 导入反馈 -->
+            <div
+              v-if="importMessage"
+              class="text-xs px-2 py-1 rounded"
+              :class="importMessage.type === 'success'
+                ? 'text-green-300 bg-green-500/10'
+                : 'text-red-300 bg-red-500/10'"
+            >
+              {{ importMessage.text }}
+            </div>
+
+            <!-- 已导入列表 -->
+            <div v-if="importedList.length > 0" class="space-y-1">
+              <div
+                v-for="(batch, idx) in importedList"
+                :key="`${importStormId}-${idx}`"
+                class="text-xs px-2 py-1 rounded bg-dark-900/40 flex gap-1.5 items-center justify-between"
+              >
+                <div class="flex gap-1.5 min-w-0 items-center">
+                  <span
+                    class="rounded-full shrink-0 h-2 w-2"
+                    :style="{ backgroundColor: sourceColor(IMPORT_SOURCE_ID) }"
+                  />
+                  <span class="text-gray-300 truncate">
+                    {{ formatIssuedAtBjt(batch.issued_at) }} · {{ batch.points.length }} 点
+                  </span>
+                </div>
+                <button
+                  class="text-gray-400 shrink-0 transition-colors hover:text-red-400"
+                  title="删除"
+                  @click="removeImported(idx)"
+                >
+                  <div class="i-carbon-close" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
