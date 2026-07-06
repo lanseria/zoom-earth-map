@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { StormTrack } from '~/composables/timeline'
 import { useTimelineStore } from '~/composables/timeline'
-import { IMPORT_SOURCE_ID, IMPORT_TYPES } from '~/utils/stormImport'
+import { IMPORT_TYPES, importedModelName, importedSourceColor, isImportedSource } from '~/utils/stormImport'
 
 const timelineStore = useTimelineStore()
 const isPanelOpen = ref(false)
@@ -22,7 +22,6 @@ const STORM_COLOR_BY_CODE: Record<string, string> = {
 
 const STORM_COLOR_BY_SOURCE: Record<string, string> = {
   'zoom-earth': '#00b4d8',
-  'google-weather-lab': '#34d399',
   'cma': '#f87171',
   'jma': '#f4845f',
   'jtwc': '#a3e635',
@@ -33,7 +32,6 @@ const STORM_COLOR_BY_SOURCE: Record<string, string> = {
 
 const SOURCE_LABELS: Record<string, string> = {
   'zoom-earth': 'zoom.earth',
-  'google-weather-lab': 'Google',
   'cma': 'CMA',
   'jma': 'JMA',
   'jtwc': 'JTWC',
@@ -47,10 +45,16 @@ function codeColor(code: string) {
 }
 
 function sourceColor(source: string) {
+  // 第三方导入来源使用确定性调色盘（与内置实时源颜色错开）
+  if (isImportedSource(source))
+    return importedSourceColor(source)
   return STORM_COLOR_BY_SOURCE[source] ?? '#94a3b8'
 }
 
 function sourceLabel(source: string) {
+  // 导入来源显示模型名前缀
+  if (isImportedSource(source))
+    return importedModelName(source)
   return SOURCE_LABELS[source] ?? source
 }
 
@@ -156,13 +160,13 @@ async function handleFileChange(e: Event) {
     return
   try {
     const text = await file.text()
-    const batch = importType.value.parse(text)
+    const batch = importType.value.parse(text, file.name)
     timelineStore.importStormForecast(importStormId.value, batch)
-    // 确保导入源默认可见
-    timelineStore.stormForecastSources[IMPORT_SOURCE_ID] = true
+    // 确保该模型对应的导入源默认可见
+    timelineStore.stormForecastSources[batch.source] = true
     importMessage.value = {
       type: 'success',
-      text: `导入成功（${batch.points.length} 个点位）`,
+      text: `${importedModelName(batch.source)} 导入成功（${batch.points.length} 个点位）`,
     }
   }
   catch (err: any) {
@@ -398,10 +402,10 @@ function removeImported(index: number) {
                 <div class="flex gap-1.5 min-w-0 items-center">
                   <span
                     class="rounded-full shrink-0 h-2 w-2"
-                    :style="{ backgroundColor: sourceColor(IMPORT_SOURCE_ID) }"
+                    :style="{ backgroundColor: sourceColor(batch.source) }"
                   />
                   <span class="text-gray-300 truncate">
-                    {{ formatIssuedAtBjt(batch.issued_at) }} · {{ batch.points.length }} 点
+                    {{ sourceLabel(batch.source) }} · {{ formatIssuedAtBjt(batch.issued_at) }} · {{ batch.points.length }} 点
                   </span>
                 </div>
                 <button

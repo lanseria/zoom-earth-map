@@ -3,8 +3,62 @@
 
 import type { StormCode, StormForecastBatch, StormTrackPoint } from '~/composables/timeline'
 
-/** Google Weather Lab 统一的 source 标识 */
-export const IMPORT_SOURCE_ID = 'google-weather-lab'
+/**
+ * 第三方导入来源的命名空间前缀。
+ * 每个导入的预测批次 source 形如 `imported:FNV3`、`imported:GRPH`，
+ * 模型名取自 CSV 文件名前缀，多个模型作为独立预测路径共存。
+ */
+export const IMPORT_SOURCE_PREFIX = 'imported:'
+
+/** 由模型名构造导入来源标识 */
+export function makeImportedSource(model: string): string {
+  return `${IMPORT_SOURCE_PREFIX}${model}`
+}
+
+/** 判断某个 source 是否为第三方导入来源 */
+export function isImportedSource(source: string): boolean {
+  return source.startsWith(IMPORT_SOURCE_PREFIX)
+}
+
+/** 从导入来源标识中提取模型名 */
+export function importedModelName(source: string): string {
+  return source.slice(IMPORT_SOURCE_PREFIX.length)
+}
+
+// 导入来源配色盘（与内置实时源颜色错开）
+const IMPORT_PALETTE = ['#34d399', '#f472b6', '#22d3ee', '#facc15', '#a3e635', '#fb923c', '#c084fc', '#f87171', '#60a5fa', '#fde047']
+
+/**
+ * 由模型名确定性地推导一个稳定颜色（同名模型跨会话颜色一致）。
+ * 使用 cyrb53 字符串哈希，分布均匀，能尽量让不同模型落到不同颜色。
+ */
+export function importedSourceColor(source: string): string {
+  const name = importedModelName(source)
+  let h1 = 0xDEADBEEF
+  let h2 = 0x41C6CE57
+  for (let i = 0; i < name.length; i++) {
+    const ch = name.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507)
+  h2 = Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  // 最终只用 h1 的低 31 位做取模即可，足以让短模型名分布均匀
+  const idx = (h1 >>> 0) % IMPORT_PALETTE.length
+  return IMPORT_PALETTE[idx]!
+}
+
+/**
+ * 从 CSV 文件名中提取模型名前缀。
+ * 例如 `FNV3_2026_07_06T00_00_paired.csv` → `FNV3`。
+ * 若无下划线则取去掉扩展名后的整个文件名。
+ */
+export function extractModelFromFileName(fileName: string): string {
+  const stem = fileName.replace(/[\\/]/g, '/').split('/').pop()!.replace(/\.csv$/i, '')
+  const idx = stem.indexOf('_')
+  const model = idx === -1 ? stem : stem.slice(0, idx)
+  return model.trim() || 'unknown'
+}
 
 /**
  * 根据风速（knots）推导台风强度等级 code 与中文描述。
@@ -26,9 +80,11 @@ export function windKnotsToStormCode(wind: number): { code: StormCode, descripti
   return { code: '5', description: '超强台风' }
 }
 
-/** 把 CSV 中的 "2026-07-05 18:00:00" 规范化为 UTC ISO 字符串 */
+/** 把 CSV 中的 "2026-07-05 18:00:00" 或 "2026-07-06" 规范化为 UTC ISO 字符串 */
 function normalizeIsoTime(raw: string): string {
   const trimmed = raw.trim().replace(' ', 'T')
+  if (!trimmed)
+    return ''
   // Google Weather Lab 数据为 UTC，显式补 Z 以保证跨时区解析一致
   return /z|[+-]\d{2}:?\d{2}$/i.test(trimmed) ? trimmed : `${trimmed}Z`
 }
@@ -50,9 +106,13 @@ function splitCsvLine(line: string): string[] {
 /**
  * 解析 Google Weather Lab 的 CSV 文本为一条预测批次。
  * 仅保留控制样本（sample = -1）。
+ * 模型名取自文件名前缀，作为独立来源 source，多个模型共存显示。
  * 抛出带上下文的 Error，由调用方捕获后展示给用户。
  */
-export function parseGoogleWeatherLabCsv(text: string): StormForecastBatch {
+export function parseGoogleWeatherLabCsv(text: string, fileName: string): StormForecastBatch {
+  const model = extractModelFromFileName(fileName)
+  const source = makeImportedSource(model)
+
   const lines = text.split(/\r?\n/)
 
   // 定位表头行（以 init_time 开头），跳过 # 注释
@@ -98,7 +158,7 @@ export function parseGoogleWeatherLabCsv(text: string): StormForecastBatch {
       continue
 
     const sample = toNumberOrNull(cells[iSample]!)
-    // 仅保留控制样本（sample = -1）；若文件中无 -1，则跳过非 -1 行
+    // 仅保留控制样本（sample = -1）
     if (sample !== null && sample !== -1)
       continue
 
@@ -128,7 +188,7 @@ export function parseGoogleWeatherLabCsv(text: string): StormForecastBatch {
       pressure,
       code,
       description,
-      source: IMPORT_SOURCE_ID,
+      source,
     })
   }
 
@@ -136,7 +196,7 @@ export function parseGoogleWeatherLabCsv(text: string): StormForecastBatch {
     throw new Error('CSV 中未找到有效的控制样本（sample = -1）数据行')
 
   return {
-    source: IMPORT_SOURCE_ID,
+    source,
     issued_at: issuedAt,
     points,
   }
@@ -147,12 +207,12 @@ export interface StormImportType {
   id: string
   label: string
   accept: string
-  parse: (text: string) => StormForecastBatch
+  parse: (text: string, fileName: string) => StormForecastBatch
 }
 
 export const IMPORT_TYPES: StormImportType[] = [
   {
-    id: IMPORT_SOURCE_ID,
+    id: 'google-weather-lab',
     label: 'Google Weather Lab',
     accept: '.csv',
     parse: parseGoogleWeatherLabCsv,

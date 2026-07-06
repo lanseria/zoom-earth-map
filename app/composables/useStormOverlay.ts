@@ -2,6 +2,7 @@ import type { Map as MapInstance } from 'maplibre-gl'
 import type { StormForecastBatch, StormTrackPoint } from '~/composables/timeline'
 // app/composables/useStormOverlay.ts
 import maplibregl from 'maplibre-gl'
+import { importedModelName, importedSourceColor, isImportedSource } from '~/utils/stormImport'
 
 type MapGetter = () => MapInstance
 
@@ -49,7 +50,6 @@ export function useStormOverlay(getMap: MapGetter) {
   }
   const STORM_COLOR_BY_SOURCE: Record<string, string> = {
     'zoom-earth': '#00b4d8',
-    'google-weather-lab': '#34d399',
     'cma': '#f87171',
     'jma': '#f4845f',
     'jtwc': '#a3e635',
@@ -81,6 +81,9 @@ export function useStormOverlay(getMap: MapGetter) {
   }
 
   function stormSourceColor(source: string) {
+    // 第三方导入来源使用确定性调色盘，与面板保持一致
+    if (isImportedSource(source))
+      return importedSourceColor(source)
     return STORM_COLOR_BY_SOURCE[source] ?? STORM_SOURCE_FALLBACK
   }
 
@@ -294,11 +297,15 @@ export function useStormOverlay(getMap: MapGetter) {
     return empty
   })
 
+  function stormSourceLabel(source: string): string {
+    return isImportedSource(source) ? importedModelName(source) : (source ?? 'unknown')
+  }
+
   function stormPointPopupHtml(props: any): string {
     const windMs = (props.wind * 1.852).toFixed(1)
-    const sourceLabel = props.source ?? 'unknown'
+    const sourceLabel = stormSourceLabel(props.source ?? 'unknown')
     const issued = props.issued_at
-      ? `<div style="color:#9ca3af">发布: ${formatStormDateBjt(props.issued_at)} (${props.source})</div>`
+      ? `<div style="color:#9ca3af">发布: ${formatStormDateBjt(props.issued_at)} (${sourceLabel})</div>`
       : `<div style="color:#9ca3af">来源: ${sourceLabel}</div>`
     return `
     <div style="font-family: 'DM Sans', sans-serif; min-width: 180px; padding: 4px 2px;">
