@@ -52,6 +52,19 @@ export default defineNuxtConfig({
     port: 19998,
   },
 
+  vite: {
+    // maplibre-gl v6 为纯 ESM 且通过 new URL('./maplibre-gl-worker.mjs', import.meta.url)
+    // 引用同目录的 worker/shared 分包；依赖预构建会把主包搬进缓存目录导致相对路径失效
+    //（worker 请求落到 SPA 回退页，所有 GeoJSON/矢量图层静默消失），故排除出预构建。
+    optimizeDeps: {
+      exclude: ['maplibre-gl'],
+    },
+    // maplibre 以 { type: 'module' } 创建 worker，worker 资源需以 ES 格式打包
+    worker: {
+      format: 'es',
+    },
+  },
+
   future: {
     compatibilityVersion: 4,
   },
@@ -76,12 +89,6 @@ export default defineNuxtConfig({
       routes: ['/'],
     },
   },
-  vite: {
-    optimizeDeps: {
-      include: ['maplibre-gl'],
-    },
-  },
-
   eslint: {
     config: {
       standalone: false,

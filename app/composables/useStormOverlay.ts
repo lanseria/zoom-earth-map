@@ -1,7 +1,7 @@
+// app/composables/useStormOverlay.ts
 import type { Map as MapInstance } from 'maplibre-gl'
 import type { StormForecastBatch, StormTrackPoint } from '~/composables/timeline'
-// app/composables/useStormOverlay.ts
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import { importedModelName, importedSourceColor, isImportedSource } from '~/utils/stormImport'
 
 type MapGetter = () => MapInstance

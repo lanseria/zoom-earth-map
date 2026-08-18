@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
+// v6 在打包器（Vite/Rollup）下无法从 import.meta.url 推导 worker 地址（模板字符串不可静态分析，
+// 生产产物会指向不存在的文件），按官方迁移指南需显式指定；?worker&url 让 Vite 将 worker
+// 连同其依赖的 shared 分包打包为自包含资源（dev 返回本地模块 URL）。
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url'
 import { createMapStyle } from '~/constants/map'
 import 'maplibre-gl/dist/maplibre-gl.css'
+
+maplibregl.setWorkerUrl(maplibreWorkerUrl)
 
 const props = defineProps({
   selectedTimestamp: {

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FeatureCollection } from 'geojson'
 import type { GeoJSONSource, Map, MapMouseEvent } from 'maplibre-gl'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import { useTimelineStore } from '~/composables/timeline'
 import { computeCloudHeight } from '~/utils/cloudHeight'
 
