@@ -101,6 +101,8 @@ onUnmounted(() => {
 
 defineExpose({
   updateSatelliteLayer,
+  /** 供覆盖层 UI 组件访问地图实例（如云高测量的点击拾取） */
+  getMapInstance: (): maplibregl.Map | undefined => map,
 })
 </script>
 

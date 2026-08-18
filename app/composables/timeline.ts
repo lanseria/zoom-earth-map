@@ -617,6 +617,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     currentTimestampIndex,
     isPlaying,
     statusMessage,
+    mapViewerInstance,
     animationSpeed,
     animationDuration,
     loopPlayback,
